@@ -35,6 +35,10 @@ class SRBDControllerInterface:
                 )
 
                 self.batched_controller = Acados_NMPC_GaitAdaptive()
+                
+        elif self.type == "arm_mpc":
+            from quadruped_pympc.controllers.arm_augmented_mpc.arm_augmented_mpc_nominal import Arm_Augmented_MPC
+            self.controller = Arm_Augmented_MPC()
 
         elif self.type == 'input_rates':
             from quadruped_pympc.controllers.gradient.input_rates.centroidal_nmpc_input_rates import (
