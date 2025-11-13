@@ -264,7 +264,7 @@ class Quadruped_PyMPC_Node(Node):
 
     # -------------------- MPC child process with SHM output ------------------------------------
     def compute_mpc_process_callback(self, input_data_process, shm_out_name: str, seq_out: Value):
-        gc.disable()  # <-- Good!
+        gc.disable() 
         pid = os.getpid()
 
         # Set affinity for MPC process
@@ -273,7 +273,6 @@ class Quadruped_PyMPC_Node(Node):
         except Exception as e:
             print(f"MPC Process: Warning: Could not set CPU affinity. {e}")
 
-        # --- This is your working method ---
         # Set high priority for MPC process
         try:
             print(f"Setting high priority for MPC process (PID: {pid})...")
@@ -281,7 +280,6 @@ class Quadruped_PyMPC_Node(Node):
             os.system("sudo echo -20 > /proc/" + str(pid) + "/autogroup")
         except Exception as e:
             print(f"Warning: Could not set MPC process priority: {e}")
-        # --- End of priority code ---
 
         shm = shared_memory.SharedMemory(name=shm_out_name)
         arr = np.ndarray((N_DBL,), dtype=np.float64, buffer=shm.buf)
@@ -533,23 +531,21 @@ class Quadruped_PyMPC_Node(Node):
                     s2 = self.seq_out.value
                     if s1 == s2 and (s2 % 2 == 0):
                         # Validate age
-                        # if time.monotonic() - float(tmp[IDX_STAMP]) <= MAX_MPC_DATA_AGE_S:
-                        self.nmpc_GRFs        = vec12_to_legsattr(tmp[IDX_GRF])
-                        self.nmpc_footholds   = vec12_to_legsattr(tmp[IDX_FH])
-                        self.nmpc_joints_pos  = vec12_to_legsattr(tmp[IDX_JP])
-                        self.nmpc_joints_vel  = vec12_to_legsattr(tmp[IDX_JV])
-                        self.nmpc_joints_acc  = vec12_to_legsattr(tmp[IDX_JA])
-                        self.nmpc_predicted_state = tmp[IDX_PRED].copy()
-                        self.best_sample_freq  = float(tmp[IDX_BSF])
-                        self.last_mpc_loop_time = float(tmp[IDX_LAST])
-                        self.last_mpc_update_mono = float(tmp[IDX_STAMP])
-                        # else:
-                        # # # --- THIS IS THE NEW, CRITICAL PART ---
-                        # # DATA IS STALE: Command a safe, zero-GRF fallback
-                        #     self.get_logger().warn("MPC data STALE. Commanding zero GRFs.")
+                        if time.monotonic() - float(tmp[IDX_STAMP]) <= MAX_MPC_DATA_AGE_S:
+                            self.nmpc_GRFs        = vec12_to_legsattr(tmp[IDX_GRF])
+                            self.nmpc_footholds   = vec12_to_legsattr(tmp[IDX_FH])
+                            self.nmpc_joints_pos  = vec12_to_legsattr(tmp[IDX_JP])
+                            self.nmpc_joints_vel  = vec12_to_legsattr(tmp[IDX_JV])
+                            self.nmpc_joints_acc  = vec12_to_legsattr(tmp[IDX_JA])
+                            self.nmpc_predicted_state = tmp[IDX_PRED].copy()
+                            self.best_sample_freq  = float(tmp[IDX_BSF])
+                            self.last_mpc_loop_time = float(tmp[IDX_LAST])
+                            self.last_mpc_update_mono = float(tmp[IDX_STAMP])
+                        else:
+                        # DATA IS TOO OLD: Command a safe, zero-GRF fallback (TEST)
+                            self.get_logger().warn("MPC data STALE. Commanding zero GRFs.")
                         #     self.nmpc_GRFs = LegsAttr(FL=np.zeros(3), FR=np.zeros(3), RL=np.zeros(3), RR=np.zeros(3))
-                        # # # You can also zero out other commands if needed
-                        # # # self.nmpc_footholds = ... (e.g., current footholds)
+
 
         else:
             if time.time() - self.last_mpc_time > 1.0 / MPC_FREQ:
@@ -622,28 +618,22 @@ class Quadruped_PyMPC_Node(Node):
         for leg in ["FL", "FR", "RL", "RR"]:
             tau_min, tau_max = self.tau_limits[leg][:, 0], self.tau_limits[leg][:, 1]
             self.tau[leg] = np.clip(self.tau[leg], tau_min, tau_max)
-
-        # --- THIS IS THE NEW FILTERING SECTION ---
         
-        # Low-pass filter the output torques to smooth the "shakes"
-        # alpha = 0.0: No filter (very jerky)
-        # alpha = 0.9: Very smooth (but adds delay)
-        # Start with a value like 0.7 or 0.8
+        # Low-pass filter the output torques to smooth the vibration??
+
         alpha = 0.8 
         self.tau_filtered.FL = alpha * self.tau_filtered.FL + (1.0 - alpha) * self.tau.FL
         self.tau_filtered.FR = alpha * self.tau_filtered.FR + (1.0 - alpha) * self.tau.FR
         self.tau_filtered.RL = alpha * self.tau_filtered.RL + (1.0 - alpha) * self.tau.RL
         self.tau_filtered.RR = alpha * self.tau_filtered.RR + (1.0 - alpha) * self.tau.RR
         
-        # Apply convention AFTER filtering
         if USE_DLS_CONVENTION:
             self.tau_filtered.FL[0] = -self.tau_filtered.FL[0]
             self.tau_filtered.RL[0] = -self.tau_filtered.RL[0]
-        # --- END NEW FILTERING SECTION ---
 
         control_signal_msg = ControlSignalMsg()
         
-        # Publish the FILTERED torques
+        # Publish the torques
         control_signal_msg.torques = np.concatenate([self.tau_filtered.FL, self.tau_filtered.FR, self.tau_filtered.RL, self.tau_filtered.RR], axis=0).flatten()
         control_signal_msg.timestamp = self.last_mpc_loop_time
         self.publisher_control_signal.publish(control_signal_msg)
