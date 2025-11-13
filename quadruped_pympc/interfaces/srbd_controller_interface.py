@@ -209,7 +209,26 @@ class SRBDControllerInterface:
                 nmpc_joints_acc = LegsAttr(
                     FL=nmpc_joints_acc[0:3], FR=nmpc_joints_acc[3:6], RL=nmpc_joints_acc[6:9], RR=nmpc_joints_acc[9:12]
                 )
+            elif self.type == "arm_mpc":
+                state_current['arm_joint_pos']=np.zeros(3)
+                state_current['arm_joint_vel']=np.zeros(3)  
+                state_current['wrench_estimated']=np.zeros(6)
+                state_current['spring_gains'] =np.array([5,5,5])
+                state_current['damping_gains']=np.array([0.5,0.5,0.5])
 
+                ref_state['ref_arm_position']=np.zeros(3)
+                ref_state['ref_arm_velocity']=np.zeros(3)
+
+
+
+
+                nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _ = self.controller.compute_control(
+                    state_current, ref_state, contact_sequence, external_wrenches=external_wrenches
+                )
+
+                nmpc_joints_pos = None
+                nmpc_joints_vel = None
+                nmpc_joints_acc = None
             else:
                 nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _ = self.controller.compute_control(
                     state_current, ref_state, contact_sequence, inertia=inertia, external_wrenches=external_wrenches

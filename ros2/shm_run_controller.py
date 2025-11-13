@@ -51,7 +51,7 @@ except Exception:
     pass
 # ----------------------------------------------------------------------------------------------
 
-USE_DLS_CONVENTION = True
+USE_DLS_CONVENTION = False
 
 USE_THREADED_MPC = False
 USE_PROCESS_MPC  = True
@@ -67,7 +67,7 @@ USE_SMOOTH_VELOCITY = False
 USE_SMOOTH_HEIGHT = True
 
 # Latest-only data policy for MPC output
-MAX_MPC_DATA_AGE_S = 0.05  # 20 ms
+MAX_MPC_DATA_AGE_S = 0.005  # 20 ms
 
 # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
 # Payload layout (float64):
@@ -533,23 +533,23 @@ class Quadruped_PyMPC_Node(Node):
                     s2 = self.seq_out.value
                     if s1 == s2 and (s2 % 2 == 0):
                         # Validate age
-                        if time.monotonic() - float(tmp[IDX_STAMP]) <= MAX_MPC_DATA_AGE_S:
-                            self.nmpc_GRFs        = vec12_to_legsattr(tmp[IDX_GRF])
-                            self.nmpc_footholds   = vec12_to_legsattr(tmp[IDX_FH])
-                            self.nmpc_joints_pos  = vec12_to_legsattr(tmp[IDX_JP])
-                            self.nmpc_joints_vel  = vec12_to_legsattr(tmp[IDX_JV])
-                            self.nmpc_joints_acc  = vec12_to_legsattr(tmp[IDX_JA])
-                            self.nmpc_predicted_state = tmp[IDX_PRED].copy()
-                            self.best_sample_freq  = float(tmp[IDX_BSF])
-                            self.last_mpc_loop_time = float(tmp[IDX_LAST])
-                            self.last_mpc_update_mono = float(tmp[IDX_STAMP])
-                        else:
-                        # # --- THIS IS THE NEW, CRITICAL PART ---
-                        # DATA IS STALE: Command a safe, zero-GRF fallback
-                            self.get_logger().warn("MPC data STALE. Commanding zero GRFs.")
-                            self.nmpc_GRFs = LegsAttr(FL=np.zeros(3), FR=np.zeros(3), RL=np.zeros(3), RR=np.zeros(3))
-                        # # You can also zero out other commands if needed
-                        # # self.nmpc_footholds = ... (e.g., current footholds)
+                        # if time.monotonic() - float(tmp[IDX_STAMP]) <= MAX_MPC_DATA_AGE_S:
+                        self.nmpc_GRFs        = vec12_to_legsattr(tmp[IDX_GRF])
+                        self.nmpc_footholds   = vec12_to_legsattr(tmp[IDX_FH])
+                        self.nmpc_joints_pos  = vec12_to_legsattr(tmp[IDX_JP])
+                        self.nmpc_joints_vel  = vec12_to_legsattr(tmp[IDX_JV])
+                        self.nmpc_joints_acc  = vec12_to_legsattr(tmp[IDX_JA])
+                        self.nmpc_predicted_state = tmp[IDX_PRED].copy()
+                        self.best_sample_freq  = float(tmp[IDX_BSF])
+                        self.last_mpc_loop_time = float(tmp[IDX_LAST])
+                        self.last_mpc_update_mono = float(tmp[IDX_STAMP])
+                        # else:
+                        # # # --- THIS IS THE NEW, CRITICAL PART ---
+                        # # DATA IS STALE: Command a safe, zero-GRF fallback
+                        #     self.get_logger().warn("MPC data STALE. Commanding zero GRFs.")
+                        #     self.nmpc_GRFs = LegsAttr(FL=np.zeros(3), FR=np.zeros(3), RL=np.zeros(3), RR=np.zeros(3))
+                        # # # You can also zero out other commands if needed
+                        # # # self.nmpc_footholds = ... (e.g., current footholds)
 
         else:
             if time.time() - self.last_mpc_time > 1.0 / MPC_FREQ:
