@@ -2,7 +2,7 @@ import readline
 import readchar
 import time
 import numpy as np
-
+from std_srvs.srv import Trigger
 # Config imports
 from quadruped_pympc import config as cfg
 
@@ -26,7 +26,7 @@ class Console():
         # Autocomplete setup
         self.commands = [
             "stw", "ooo", "narrowStance", "wideStance", "setGaitTimer", 
-            "setup", "goUp", "goDown", "help", "ictp"
+            "setup", "goUp", "goDown", "help", "ictp", "veloictyFollower","setArmRestService", "ArmInfos"
         ]
         readline.set_completer(self.complete)
         readline.parse_and_bind("tab: complete")
@@ -349,6 +349,43 @@ class Console():
                             self.controller_node.env._ref_base_lin_vel_H[1] = 0
                             self.controller_node.env._ref_base_ang_yaw_dot = 0 
                             break
+                elif(input_string == "veloictyFollower"):
+                    print("ARM VELOCITY")
+
+                    while True:
+                        # command = readchar.readkey()
+
+                        self.controller_node.env._ref_base_lin_vel_H[0] = self.controller_node.wb_interface.ref_base_lin_vel_pacc
+                        self.controller_node.env._ref_base_ang_yaw_dot  = self.controller_node.wb_interface.ref_base_ang_vel_pacc
+                        print("lin_vel",self.controller_node.wb_interface.ref_base_lin_vel_pacc)
+                        print("ang_vel",self.controller_node.wb_interface.ref_base_ang_vel_pacc)
+                        # if(command == "o"):
+                        #     print("Exiting Velocity Follower")
+                        #     break
+                        time.sleep(2)
+                        if self.controller_node.wb_interface.ref_base_lin_vel_pacc ==0 and self.controller_node.wb_interface.ref_base_ang_vel_pacc==0:
+                            self.controller_node.env._ref_base_lin_vel_H[0] = 0
+                            self.controller_node.env._ref_base_lin_vel_H[1] = 0
+                            self.controller_node.env._ref_base_ang_yaw_dot  = 0 
+                            print("Exiting Velocity Follower")
+                            break
+                elif (input_string == "setArmRestService"):
+                    req = Trigger.Request()
+                    try:
+                        resp = self.controller_node.rest_client.call(req)  # synchronous call
+                        print(f"[set_rest_position] success={resp.success}, msg='{resp.message}'")
+                    except Exception as e:
+                        print(f"[set_rest_position] call failed: {e}")
+                elif (input_string == "ArmInfos"):
+                    
+                    print("Stiffness Values")
+                    print(self.controller_node.wb_interface.passive_arm_interface.spring_gains)
+                    print("Damping Values")
+                    print(self.controller_node.wb_interface.passive_arm_interface.damping_gains)
+                    
+
+                    
+                                    
             except Exception as e:
                 print("Error: ", e)
                 print("Invalid Command")

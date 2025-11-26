@@ -1,7 +1,7 @@
 import rclpy 
 from rclpy.node import Node 
-from dls2_msgs.msg import BaseStateMsg, BlindStateMsg, ControlSignalMsg, TrajectoryGeneratorMsg, TimeDebugMsg
-from sensor_msgs.msg import Joy
+from dls2_msgs.msg import BaseStateMsg, BlindStateMsg, ControlSignalMsg, TrajectoryGeneratorMsg, TimeDebugMsg,PassiveArmState
+from sensor_msgs.msg import Joy,JointState
 
 import time
 import numpy as np
@@ -25,6 +25,7 @@ from gym_quadruped.utils.mujoco.visual import render_sphere
 
 # Config imports
 from quadruped_pympc import config as cfg
+from std_srvs.srv import Trigger
 
 import sys
 import os 
@@ -106,9 +107,12 @@ class Quadruped_PyMPC_Node(Node):
         self.subscription_base_state = self.create_subscription(BaseStateMsg,"/dls2/base_state", self.get_base_state_callback, 1)
         self.subscription_blind_state = self.create_subscription(BlindStateMsg,"/dls2/blind_state", self.get_blind_state_callback, 1)
         self.subscription_joy = self.create_subscription(Joy,"joy", self.get_joy_callback, 1)
+        self.subscription_arm_interface = self.create_subscription(JointState,"passive_arm_joint_states", self.get_arm_interface_callback, 1)
         self.publisher_control_signal = self.create_publisher(ControlSignalMsg,"dls2/quadruped_pympc_torques", 1)
         self.publisher_trajectory_generator = self.create_publisher(TrajectoryGeneratorMsg,"dls2/trajectory_generator", 1)
         self.publisher_time_debug = self.create_publisher(TimeDebugMsg,"dls2/time_debug", 1)
+        self.publisher_arm_interface = self.create_publisher(PassiveArmState,"dls2/passive_arm_state", 1)
+        self.rest_client = self.create_client(Trigger, 'set_rest_position')
         if(USE_SCHEDULER):
             self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_control_callback)
         
@@ -136,6 +140,9 @@ class Quadruped_PyMPC_Node(Node):
         self.impedence_joint_position_gain = np.ones(12)*cfg.simulation_params['impedence_joint_position_gain']
         self.impedence_joint_velocity_gain = np.ones(12)*cfg.simulation_params['impedence_joint_velocity_gain']
 
+        self.arm_joint_pos = np.zeros(3)
+        self.arm_joint_vel = np.zeros(3)
+        self.external_wrenches = np.zeros(6)
 
         # Mujoco env
         self.env = QuadrupedEnv(
@@ -304,6 +311,7 @@ class Quadruped_PyMPC_Node(Node):
                     # If the controller is gradient and is using RTI, we need to linearize the mpc after its computation
                     # this helps to minize the delay between new state->control in a real case scenario.
                     self.srbd_controller_interface.compute_RTI()
+                self.last_mpc_loop_time = last_mpc_loop_time
                 last_mpc_process_time = time.time()
 
 
@@ -364,7 +372,8 @@ class Quadruped_PyMPC_Node(Node):
 
                 if cfg.mpc_params['type'] != 'sampling' and cfg.mpc_params['use_RTI']:
                     self.srbd_controller_interface.compute_RTI()
-
+                self.last_mpc_loop_time = last_mpc_loop_time
+                last_mpc_process_time = time.time()
 
     def get_base_state_callback(self, msg):
         
@@ -412,6 +421,7 @@ class Quadruped_PyMPC_Node(Node):
 
 
 
+
     def get_joy_callback(self, msg):
         """
         Callback function to handle joystick input. Joystick used is a 
@@ -431,6 +441,10 @@ class Quadruped_PyMPC_Node(Node):
             os.system("pkill -f play_ros2.py") 
             exit(0)
 
+    def get_arm_interface_callback(self, msg):
+        self.arm_joint_pos=np.array(msg.position, dtype=float).copy()
+        self.arm_joint_vel=np.array(msg.velocity, dtype=float).copy()
+        # print("arm joint pos callback:", self.arm_joint_pos)
 
 
 
@@ -480,9 +494,15 @@ class Quadruped_PyMPC_Node(Node):
         base_pos = self.env.base_pos
         com_pos = self.env.com
 
+        #arm states
+        arm_joint_pos = self.arm_joint_pos.copy()
+        arm_joint_vel = self.arm_joint_vel.copy()
+        
+        # print("arm joint pos control:", arm_joint_pos)
 
         # Get the reference base velocity in the world frame
         ref_base_lin_vel, ref_base_ang_vel = self.env.target_base_vel()
+
         
         # Get the inertia matrix
         if(cfg.simulation_params['use_inertia_recomputation']):
@@ -515,6 +535,7 @@ class Quadruped_PyMPC_Node(Node):
 
         
         # Update the state and reference -------------------------
+        mujoco_contact = None
         state_current, \
         ref_state, \
         contact_sequence, \
@@ -531,9 +552,29 @@ class Quadruped_PyMPC_Node(Node):
                                                 legs_order,
                                                 simulation_dt,
                                                 ref_base_lin_vel,
-                                                ref_base_ang_vel)
+                                                ref_base_ang_vel,
+                                                mujoco_contact,
+                                                arm_joint_pos,
+                                                arm_joint_vel
+                                                
+                                                )
+        ## arm related stuff
+        # external_wrenches = np.zeros((6,))
+        # arm_joint_pos = np.zeros((3,))
+        # arm_joint_vel = np.zeros((3,))
 
+        # state_current['arm_joint_pos']=self.arm_joint_pos #rosnodearduino
+        # state_current['arm_joint_vel']=self.arm_joint_vel #rosnodearduino
 
+        # print("arm joint pos:", state_current['arm_joint_pos'])
+        # print("wrench estimated:", state_current['wrench_estimated'])
+
+        # state_current['wrench_estimated']=np.zeros(6) #arm_interface_wrench_est
+        # state_current['spring_gains'] =np.array([5,5,5]) #config 
+        # state_current['damping_gains']=np.array([0.5,0.5,0.5]) #config
+
+        # ref_state['ref_arm_position']=np.zeros(3) #rosinterface 
+        # ref_state['ref_arm_velocity']=np.zeros(3) #rosinterface
         
         # Console commands hacks
         ref_state["ref_position"][2] += self.console.height_delta
@@ -587,6 +628,7 @@ class Quadruped_PyMPC_Node(Node):
                         self.last_mpc_update_mono = float(tmp[IDX_STAMP])
                         
         else:
+            last_mpc_process_time = time.time()
             if time.time() - self.last_mpc_time > 1.0 / MPC_FREQ:
                 self.nmpc_GRFs,  \
                 self.nmpc_footholds, \
@@ -600,15 +642,16 @@ class Quadruped_PyMPC_Node(Node):
                                                                         inertia,
                                                                         self.wb_interface.pgg.phase_signal,
                                                                         self.wb_interface.pgg.step_freq,
-                                                                        optimize_swing)
+                                                                        optimize_swing,
+                                                                        self.external_wrenches)
                 
                 if(cfg.mpc_params['type'] != 'sampling' and cfg.mpc_params['use_RTI']):
                     # If the controller is gradient and is using RTI, we need to linearize the mpc after its computation
                     # this helps to minize the delay between new state->control in a real case scenario.
                     self.srbd_controller_interface.compute_RTI()
-        
-                    
+                self.last_mpc_loop_time = time.time() - last_mpc_process_time
                 self.last_mpc_time = time.time()
+
                 
         
         
@@ -675,6 +718,12 @@ class Quadruped_PyMPC_Node(Node):
         time_debug_msg.time_wbc = self.loop_time
         time_debug_msg.time_mpc = self.last_mpc_loop_time
         self.publisher_time_debug.publish(time_debug_msg)
+
+        passive_arm_msg = PassiveArmState()
+        passive_arm_msg.passive_arm_joint_position = np.concatenate([self.arm_joint_pos], axis=0).flatten()
+        passive_arm_msg.passive_arm_joint_velocity = np.concatenate([arm_joint_vel], axis=0).flatten()
+        passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
+        self.publisher_arm_interface.publish(passive_arm_msg)
 
 
 

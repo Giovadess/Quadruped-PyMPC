@@ -70,14 +70,14 @@ mpc_params = {
     # 'collaborative' optimized directly the GRF and has a passive arm model inside
     # 'lyapunov' optimized directly the GRF and has a Lyapunov-based stability constraint
     # 'kinodynamic' sbrd with joints - experimental
-    'type':                                    'nominal',
+    'type':                                    'arm_mpc',
 
     # print the mpc info
     'verbose':                                 False,
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon':                                 12,
+    'horizon':                                 15,
     'dt':                                      0.02,
 
     # GRF limits for each single leg
@@ -142,19 +142,19 @@ mpc_params = {
 
     # ONLY ONE CAN BE TRUE AT A TIME (only gradient)
     'use_static_stability':                    False,
-    'use_zmp_stability':                       False,
+    'use_zmp_stability':                       True,
     'trot_stability_margin':                   0.04,
     'pace_stability_margin':                   0.1,
     'crawl_stability_margin':                  0.04,  # in general, 0.02 is a good value
 
     # this is used to compensate for the external wrenches
     # you should provide explicitly this value in compute_control
-    'external_wrenches_compensation':          True,
+    'external_wrenches_compensation':          False,
     'external_wrenches_compensation_num_step': 15,
 
     # this is used only in the case of collaborative mpc, to
     # compensate for the external wrench in the prediction (only collaborative)
-    'passive_arm_compensation':                True,
+    'passive_arm_compensation':                False,
 
 
     # Gain for Lyapunov-based MPC
@@ -180,6 +180,9 @@ mpc_params = {
     'sigma_mppi':                              3,
     'sigma_random_sampling':                   [0.2, 3, 10],
     'shift_solution':                          False,
+
+    'arm_spring_gains':                       np.array([3.5, 8.5, 3.0]),
+    'arm_damping_gains':                      np.array([0.25, 1.43, 0.1]),
 
     # ----- END properties for the sampling-based mpc -----
     }

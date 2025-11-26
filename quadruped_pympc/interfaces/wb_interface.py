@@ -18,6 +18,8 @@ from quadruped_pympc.helpers.early_stance_detector import EarlyStanceDetector
 if cfg.simulation_params['visual_foothold_adaptation'] != 'blind':
     from quadruped_pympc.helpers.visual_foothold_adaptation import VisualFootholdAdaptation
 
+#import passive arm interface
+from quadruped_pympc.helpers.passive_arm_interface import Passive_Arm_Interface
 
 class WBInterface:
     """
@@ -105,6 +107,21 @@ class WBInterface:
         self.current_contact = np.array([1, 1, 1, 1])
         self.previous_contact = np.array([1, 1, 1, 1])
 
+        self.spring_gains = cfg.mpc_params['arm_spring_gains']
+        self.damping_gains = cfg.mpc_params['arm_damping_gains']
+
+        # Passive Arm Interface -------------------------------------------------------------------
+        self.passive_arm_interface = Passive_Arm_Interface(spring_gains= self.spring_gains,
+                                                    robot=          "aliengo_follower",
+                                                    joint_pos0=     np.array([0.0, 0.0, 0.0]),
+                                                    mass_matrix=    np.array([0.5, 0.5, 0.25]),
+                                                    damping_gains=  self.damping_gains,
+                                                    com_offset=     np.array([0,0,0]),
+        )
+
+        self.Jeef_arm =np.zeros((3, 3))  # Jacobian of the end effector in the base frame
+
+
     def update_state_and_reference(
         self,
         com_pos: np.ndarray,
@@ -121,7 +138,9 @@ class WBInterface:
         ref_base_lin_vel: np.ndarray,
         ref_base_ang_vel: np.ndarray,
         mujoco_contact: np.ndarray = None,
-    ) -> [dict, dict, list, LegsAttr, list, list, float, bool]:
+        arm_joint_pos: np.ndarray = np.zeros((3,)),
+        arm_joint_vel: np.ndarray = np.zeros((3,)),
+    ) -> [dict, dict, list, LegsAttr, list, list, float, bool,float,float]:
         """Update the state and reference for the whole body controller, including the contact sequence, footholds, and terrain estimation.
 
         Args:
@@ -163,7 +182,12 @@ class WBInterface:
             joint_FR=joints_pos.FR,
             joint_RL=joints_pos.RL,
             joint_RR=joints_pos.RR,
+            arm_joint_pos=arm_joint_pos,
+            arm_joint_vel=arm_joint_vel,
+            spring_gains=self.spring_gains,
+            damping_gains=self.damping_gains,
         )
+
 
         # Modulate the desired velocity if the robot is in strange positions
         if self.vm.activated:
@@ -253,6 +277,11 @@ class WBInterface:
         )
 
         ref_pos = np.array([0, 0, cfg.hip_height])
+        ## shift correction with weight and CoM offset
+        # m_nom= 24 #passed externally
+        # m_est = m_nom + wrench_estimate[2]/9.81
+        # com_shift_load = 0.05 * (m_est/m_nom) * 0
+
         ref_pos[2] = cfg.simulation_params["ref_z"] + terrain_height
         
         # Rotate the reference base linear velocity to the terrain frame
@@ -285,10 +314,23 @@ class WBInterface:
                 ref_angular_velocity=ref_base_ang_vel,
                 ref_orientation=np.array([terrain_roll, terrain_pitch, 0.0]),
                 ref_position=ref_pos,
+                ref_arm_position=np.zeros(3),  #hard coded may need to update with rest position??
+                ref_arm_velocity=np.zeros(3),  #hard coded
             )
 
         # -------------------------------------------------------------------------------------------------
 
+        # Calculating passive arm wrenches
+        wrench_estimate,self.Jeef_arm,end_effector_position=self.passive_arm_interface.calculate_force_estimates_damping(self.Jeef_arm,
+                                                        arm_joint_pos,
+                                                        arm_joint_vel,
+                                                        base_ori_euler_xyz, #replace this with actual rot matrix?
+                                                        )
+        wrench_estimate[2] = 0
+        wrench_estimate[3:] = 0  #only forces considered for now
+        self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
+
+        state_current['wrench_estimated']=wrench_estimate
         if cfg.mpc_params['optimize_step_freq']:
             # we can always optimize the step freq, or just at the apex of the swing
             # to avoid possible jittering in the solution

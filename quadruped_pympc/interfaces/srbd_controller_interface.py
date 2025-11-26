@@ -81,7 +81,9 @@ class SRBDControllerInterface:
                 from quadruped_pympc.controllers.sampling.centroidal_nmpc_jax import Sampling_MPC
 
             self.controller = Sampling_MPC()
-
+        elif self.type == "arm_mpc":
+            from quadruped_pympc.controllers.arm_augmented_mpc.arm_augmented_mpc_nominal import Arm_Augmented_MPC
+            self.controller = Arm_Augmented_MPC()
     def compute_control(
         self,
         state_current: dict,
@@ -91,7 +93,7 @@ class SRBDControllerInterface:
         pgg_phase_signal: np.ndarray,
         pgg_step_freq: float,
         optimize_swing: int,
-        external_wrenches: np.ndarray = np.zeros((6,)),
+        external_wrenches: np.ndarray = np.zeros((6,))
     ) -> [LegsAttr, LegsAttr, LegsAttr, LegsAttr, LegsAttr, float]:
         """Compute the control using the SRBD method
 
@@ -205,7 +207,30 @@ class SRBDControllerInterface:
                 nmpc_joints_acc = LegsAttr(
                     FL=nmpc_joints_acc[0:3], FR=nmpc_joints_acc[3:6], RL=nmpc_joints_acc[6:9], RR=nmpc_joints_acc[9:12]
                 )
+            elif self.type == "arm_mpc":
 
+                # state_current['arm_joint_pos']=np.zeros(3) #rosnodearduino
+                # state_current['arm_joint_vel']=np.zeros(3) #rosnodearduino
+
+                # state_current['wrench_estimated']=np.zeros(6) #arm_interface_wrench_est
+
+                # state_current['spring_gains'] =np.array([0.5,0.5,0.5]) #config 
+                # state_current['damping_gains']=np.array([0.5,0.5,0.5]) #config
+
+                # ref_state['ref_arm_position']=np.zeros(3) #rosinterface 
+                # ref_state['ref_arm_velocity']=np.zeros(3) #rosinterface
+
+                external_wrenches=state_current['wrench_estimated']
+                
+
+
+                nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _ = self.controller.compute_control(
+                    state_current, ref_state, contact_sequence, external_wrenches=external_wrenches
+                )
+
+                nmpc_joints_pos = None
+                nmpc_joints_vel = None
+                nmpc_joints_acc = None
             else:
                 nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _ = self.controller.compute_control(
                     state_current, ref_state, contact_sequence, inertia=inertia, external_wrenches=external_wrenches
