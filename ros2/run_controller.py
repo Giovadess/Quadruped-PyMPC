@@ -47,11 +47,12 @@ os.system("sudo echo -20 > /proc/" + str(pid) + "/autogroup")
 #for real time, launch it with chrt -r 99 python3 run_controller.py
 
 
-USE_DLS_CONVENTION = False
+USE_DLS_CONVENTION = USE_PROCESS_SHARED_MEMORY_MPC = True
+
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = False
+USE_PROCESS_SHARED_MEMORY_MPC = True
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
     # Payload layout (float64):
@@ -644,7 +645,7 @@ class Quadruped_PyMPC_Node(Node):
                                                                         self.wb_interface.pgg.step_freq,
                                                                         optimize_swing,
                                                                         self.external_wrenches)
-                
+                self.last_mpc_loop_time = time.time() - last_mpc_process_time
                 if(cfg.mpc_params['type'] != 'sampling' and cfg.mpc_params['use_RTI']):
                     # If the controller is gradient and is using RTI, we need to linearize the mpc after its computation
                     # this helps to minize the delay between new state->control in a real case scenario.

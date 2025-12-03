@@ -198,14 +198,14 @@
     <body name="leader/pa_link_0_ext" pos="-0.25 0 0.13" quat="-3.673205103346574e-06 -0.0 0.0 0.9999999999932537" >
       <inertial pos="0.0248 0.0 0.0169" quat="1.0 0.0 0.0 0.0" mass="0.2" diaginertia="0.001586944 0.001907517 0.001903894" />
 
-      <joint name="leader/arm_link_1_joint" pos="0. 0 0." axis="0 0 1" limited="true" range="-1.5 1.5"  stiffness="0.5" damping="0.5"/>
+      <joint name="leader/arm_link_1_joint" pos="0. 0 0." axis="0 0 1" limited="true" range="-1.5 1.5"  stiffness="3.5" damping="0.25"/>
       <!-- Visual Mesh -->
       <geom quat="1 0 0 0" type="mesh"   class="leader/visual_arm"  contype="0" conaffinity="0"  rgba="0 0 0 1" mesh="leader/arm_link_1" />
       <geom type="box" class="leader/collision" size="0.05 0.05 0.04" pos="0. 0 -0.035"   quat="1.0 0.0 0.0 0.0"/>
       <body name="leader/pa_link_1_ext" pos="0.0498 0 0.034">
             <!-- <inertial pos="0.0909 0 0.0923" quat="0.707051 0.0451246 -0.0453544 0.704263" mass="0.554" diaginertia="0.00488868 0.00457 0.00135132"/> -->
             <inertial pos="0.08 0.0 0.12" quat ="0.9238983141513943 0.0 0.3826380863272911 0.0" mass="0.2" diaginertia="0.00457 0.003831 0.001409" />
-            <joint name="leader/arm_link_2_joint" pos="0.01 0 0.0" axis="0 1 0" limited="false" range="0 1" stiffness="0.5" damping="0.5"/>
+            <joint name="leader/arm_link_2_joint" pos="0.01 0 0.0" axis="0 1 0" limited="false" range="0 1" stiffness="8.5" damping="1.43"/>
             
             <!-- Visual Mesh -->
             <geom quat="1 0 0 0" type="mesh" class="leader/visual_arm"  contype="0" conaffinity="0"  rgba="0 0 0 1" mesh="leader/arm_link_2" />
@@ -216,7 +216,7 @@
               <inertial pos="0.0194 0.0 -0.125" quat="0.7160633926253526 0.6980352553717256 0.0 0.0" mass="0.1" diaginertia="0.00205088 0.0008072 0.00201255" />
               <!-- <inertial pos="0.0 0.0 -0.15" quat="1 0 0 0" mass="0.258" diaginertia="0.0018474 0.00171186 0.000324584" /> -->
               <!-- Visual Mesh -->
-              <joint name="leader/arm_link_3_joint" pos="0. 0 0" axis="0 1 0" limited="false" range="-2 0.5" stiffness="0.5" damping="0.5"/>
+              <joint name="leader/arm_link_3_joint" pos="0. 0 0" axis="0 1 0" limited="false" range="-2 0.5" stiffness="3.0" damping="0.5"/>
               <!--  -->
               <!-- <geom size="0.0175 0.04 0.125" pos="0.0194 0 -0.125" type="box" rgba="0.75294 0.75294 0.75294 1"/> -->
               <geom quat="1 0 0 0" type="mesh" class="leader/visual_arm"  contype="0" conaffinity="0"  rgba="0 0 0 1" mesh="leader/arm_link_3" />

@@ -77,18 +77,21 @@ mpc_params = {
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon':                                 15,
-    'dt':                                      0.02,
+    'horizon':                                 20,
+    'dt':                                      0.04,
 
+    # in my mujoco simulation
+    # 'horizon':                                 25,
+    # 'dt':                                      0.02,
     # GRF limits for each single leg
     "grf_max":                                 mass * gravity_constant,
     "grf_min":                                 0,
     'mu':                                      0.5,
 
     # this is used to have a smaller dt near the start of the horizon
-    'use_nonuniform_discretization':           False,
+    'use_nonuniform_discretization':           True,
     'horizon_fine_grained':                    2,
-    'dt_fine_grained':                         0.01,
+    'dt_fine_grained':                         0.02,
 
     # if this is true, we optimize the step frequency as well
     # for the sampling controller, this is done in the rollout
@@ -108,7 +111,7 @@ mpc_params = {
 
     # if this is off, the mpc will not optimize the footholds and will
     # use only the ones provided in the reference
-    'use_foothold_optimization':               True,
+    'use_foothold_optimization':               False,
 
     # this is set to false automatically is use_foothold_optimization is false
     # because in that case we cannot chose the footholds and foothold
@@ -145,7 +148,7 @@ mpc_params = {
     'use_zmp_stability':                       True,
     'trot_stability_margin':                   0.04,
     'pace_stability_margin':                   0.1,
-    'crawl_stability_margin':                  0.04,  # in general, 0.02 is a good value
+    'crawl_stability_margin':                  0.02,  # in general, 0.02 is a good value
 
     # this is used to compensate for the external wrenches
     # you should provide explicitly this value in compute_control
@@ -203,9 +206,9 @@ simulation_params = {
     # this is the integration time used in the simulator
     'dt':                          0.002,
 
-    'gait':                        'trot',  # 'trot', 'pace', 'crawl', 'bound', 'full_stance'
+    'gait':                        'crawl',  # 'trot', 'pace', 'crawl', 'bound', 'full_stance'
     'gait_params':                 {'trot': {'step_freq': 1.4, 'duty_factor': 0.65, 'type': GaitType.TROT.value},
-                                    'crawl': {'step_freq': 0.5, 'duty_factor': 0.8, 'type': GaitType.BACKDIAGONALCRAWL.value},
+                                    'crawl': {'step_freq': 0.4, 'duty_factor': 0.78, 'type': GaitType.BACKDIAGONALCRAWL.value},
                                     'pace': {'step_freq': 1.4, 'duty_factor': 0.7, 'type': GaitType.PACE.value},
                                     'bound': {'step_freq': 1.8, 'duty_factor': 0.65, 'type': GaitType.BOUNDING.value},
                                     'full_stance': {'step_freq': 2, 'duty_factor': 0.65, 'type': GaitType.FULL_STANCE.value},
@@ -227,7 +230,7 @@ simulation_params = {
     # this helps to evaluate more realistically the performance of the controller
     'mpc_frequency':               100,
 
-    'use_inertia_recomputation':   True,
+    'use_inertia_recomputation':   False,
 
     'scene':                       'flat',  # flat, random_boxes, random_pyramids, perlin
 

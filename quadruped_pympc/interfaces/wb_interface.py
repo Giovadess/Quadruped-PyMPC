@@ -326,8 +326,8 @@ class WBInterface:
                                                         arm_joint_vel,
                                                         base_ori_euler_xyz, #replace this with actual rot matrix?
                                                         )
-        wrench_estimate[2] = 0
-        wrench_estimate[3:] = 0  #only forces considered for now
+        # wrench_estimate[2] = 0
+        # wrench_estimate[3:] = 0  #only forces considered for now
         self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
 
         state_current['wrench_estimated']=wrench_estimate

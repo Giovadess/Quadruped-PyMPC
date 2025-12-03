@@ -61,7 +61,7 @@ class Arm_Augmented_MPC:
            self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json",build = True, generate = True)
  
         else :
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = True, generate = True)
+           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = False, generate = False)
         
         # Initialize solver
         for stage in range(self.horizon + 1):
@@ -158,7 +158,7 @@ class Arm_Augmented_MPC:
                 num_state_cstr)  # Lower bounds on slacks corresponding to soft upper bounds for nonlinear constraints
             ocp.constraints.idxsh = np.array(range(nsh_state_constraint_start, nsh_state_constraint_end))  # Jsh
             ns = num_state_cstr
-            ocp.cost.zl = 1000 * np.ones((ns,))  # gradient wrt lower slack at intermediate shooting nodes (1 to N-1)
+            ocp.cost.zl = 500 * np.ones((ns,))  # gradient wrt lower slack at intermediate shooting nodes (1 to N-1)
             ocp.cost.Zl = 1 * np.ones(
                 (ns,))  # diagonal of Hessian wrt lower slack at intermediate shooting nodes (1 to N-1)
             ocp.cost.zu = 1000 * np.ones((ns,))
@@ -527,10 +527,19 @@ class Arm_Augmented_MPC:
         # Q_base_angle = np.array([500, 500, 0])  # roll, pitch, yaw
         # Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
 
-        Q_position = np.array([0, 0, 1000])  # x, y, z
-        Q_velocity = np.array([100, 100, 100])  # x_vel, y_vel, z_vel
-        Q_base_angle = np.array([40, 40, 0])  # roll, pitch, yaw 
-        Q_base_angle_rates = np.array([2, 2, 25])  # roll_rate, pitch_rate, yaw_rate
+
+        ### Experiments working till now no CRAWL
+        # Q_position = np.array([0, 0, 1000])  # x, y, z
+        # Q_velocity = np.array([500, 500, 100])  # x_vel, y_vel, z_vel
+        # Q_base_angle = np.array([200,200, 0])  # roll, pitch, yaw 
+        # Q_base_angle_rates = np.array([2, 2, 25])  # roll_rate, pitch_rate, yaw_rate
+        # Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
+
+        ### Original weights
+        Q_position = np.array([0, 0, 1500])  # x, y, z
+        Q_velocity = np.array([200, 200, 200])  # x_vel, y_vel, z_vel
+        Q_base_angle = np.array([200, 200, 0])  # roll, pitch, yaw
+        Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
         Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         # # ARM AUGMENTATION
         Q_q_arm     = np.array([0.5,0.5,0.5])    # Arm position weights - all zero
@@ -552,7 +561,7 @@ class Arm_Augmented_MPC:
             R_foot_force = np.array(
                 [0.00001, 0.00001, 0.00001])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         else:
-            R_foot_force = np.array([0.001, 0.001, 0.001])
+            R_foot_force = np.array([0.001, 0.001, 0.001]) # increase this?'
 
         Q_mat = np.diag(np.concatenate((Q_position, Q_velocity,
                                         Q_base_angle, Q_base_angle_rates,

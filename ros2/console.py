@@ -26,7 +26,7 @@ class Console():
         # Autocomplete setup
         self.commands = [
             "stw", "ooo", "narrowStance", "wideStance", "setGaitTimer", 
-            "setup", "goUp", "goDown", "help", "ictp", "veloictyFollower","setArmRestService", "ArmInfos"
+            "setup", "goUp", "goDown", "help", "ictp", "veloictyFollower","setArmRestService", "ArmInfos", "comoffset"
         ]
         readline.set_completer(self.complete)
         readline.parse_and_bind("tab: complete")
@@ -313,16 +313,16 @@ class Console():
                     while True:
                         command = readchar.readkey()
                         if(command == "w"):
-                            self.controller_node.env._ref_base_lin_vel_H[0] += 0.1
+                            self.controller_node.env._ref_base_lin_vel_H[0] += 0.05
                             print("w")
                         elif(command == "s"):
-                            self.controller_node.env._ref_base_lin_vel_H[0] -= 0.1
+                            self.controller_node.env._ref_base_lin_vel_H[0] -= 0.05
                             print("s")
                         elif(command == "a"):
-                            self.controller_node.env._ref_base_lin_vel_H[1] += 0.1
+                            self.controller_node.env._ref_base_lin_vel_H[1] += 0.05
                             print("a")
                         elif(command == "d"):
-                            self.controller_node.env._ref_base_lin_vel_H[1] -= 0.1
+                            self.controller_node.env._ref_base_lin_vel_H[1] -= 0.05
                             print("d")
                         elif(command == "q"):
                             self.controller_node.env._ref_base_ang_yaw_dot += 0.1
@@ -382,6 +382,16 @@ class Console():
                     print(self.controller_node.wb_interface.passive_arm_interface.spring_gains)
                     print("Damping Values")
                     print(self.controller_node.wb_interface.passive_arm_interface.damping_gains)
+
+
+                elif (input_string == "comoffset"):
+                    print("Current CoM Offset: ", self.controller_node.wb_interface.frg.com_pos_offset_b)
+                    ##add come offset on x to check if pitch is fi
+                    temp = input("Set CoM offset x: >>> ")
+                    if(temp != ""):
+                        temp = max(-0.1, min(float(temp), 0.1))
+                        self.controller_node.wb_interface.frg.com_pos_offset_b[0] = float(temp)
+                    
                     
 
                     
