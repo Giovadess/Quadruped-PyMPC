@@ -61,7 +61,7 @@ class Arm_Augmented_MPC:
            self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json",build = True, generate = True)
  
         else :
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = False, generate = False)
+           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = True, generate = True)
         
         # Initialize solver
         for stage in range(self.horizon + 1):

@@ -1,6 +1,6 @@
 import rclpy 
 from rclpy.node import Node 
-from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug
+from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug, PassiveArmState
 from sensor_msgs.msg import Joy
 
 import time
@@ -106,8 +106,8 @@ class Quadruped_PyMPC_Node(Node):
         self.publisher_trajectory_generator = self.create_publisher(TrajectoryGenerator,"/trajectory_generator", 1)
         self.publisher_time_debug = self.create_publisher(TimeDebug,"/time_debug", 1)
         # Arm interface publisher
-        # self.publisher_arm_interface = self.create_publisher(PassiveArmState,"dls2/passive_arm_state", 1)
-        # self.rest_client = self.create_client(Trigger, 'set_rest_position')
+        self.publisher_arm_interface = self.create_publisher(PassiveArmState,"/passive_arm_state", 1)
+        self.rest_client = self.create_client(Trigger, 'set_rest_position')
         if(USE_SCHEDULER):
             self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_control_callback)
         
@@ -711,11 +711,11 @@ class Quadruped_PyMPC_Node(Node):
         time_debug_msg.time_mpc = self.last_mpc_loop_time
         self.publisher_time_debug.publish(time_debug_msg)
 
-        # passive_arm_msg = PassiveArmState()
-        # passive_arm_msg.passive_arm_joint_position = np.concatenate([self.arm_joint_pos], axis=0).flatten()
-        # passive_arm_msg.passive_arm_joint_velocity = np.concatenate([arm_joint_vel], axis=0).flatten()
-        # passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
-        # self.publisher_arm_interface.publish(passive_arm_msg)
+        passive_arm_msg = PassiveArmState()
+        passive_arm_msg.passive_arm_joint_position = np.concatenate([self.arm_joint_pos], axis=0).flatten()
+        passive_arm_msg.passive_arm_joint_velocity = np.concatenate([arm_joint_vel], axis=0).flatten()
+        passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
+        self.publisher_arm_interface.publish(passive_arm_msg)
 
 
 
