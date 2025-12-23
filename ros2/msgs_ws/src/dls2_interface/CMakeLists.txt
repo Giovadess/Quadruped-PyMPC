@@ -21,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TimeDebug.msg"
   "msg/ControlSignal.msg"
   "msg/PassiveArmState.msg"
+  "msg/ZmpComputeMsg.msg"
 )
 
 ament_export_dependencies(rosidl_default_runtime)

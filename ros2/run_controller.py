@@ -1,7 +1,8 @@
 import rclpy 
 from rclpy.node import Node 
-from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug, PassiveArmState
+from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug, PassiveArmState, ZmpComputeMsg
 from sensor_msgs.msg import Joy
+from sensor_msgs.msg import JointState
 
 import time
 import numpy as np
@@ -36,8 +37,8 @@ os.system("sudo echo -20 > /proc/" + str(pid) + "/autogroup")
 #GRUB_CMDLINE_LINUX_DEFAULT="quiet splash isolcpus=4-5" in etc/default/grub
 # and then sudo update-grub
 # and uncomment the line below
-#affinity_mask = {4, 5} 
-#os.sched_setaffinity(pid, affinity_mask)
+# affinity_mask = {4, 5} 
+# os.sched_setaffinity(pid, affinity_mask)
 
 #for real time, launch it with chrt -r 99 python3 run_controller.py
 
@@ -106,8 +107,11 @@ class Quadruped_PyMPC_Node(Node):
         self.publisher_control_signal = self.create_publisher(ControlSignal,"/quadruped_pympc_torques", 1)
         self.publisher_trajectory_generator = self.create_publisher(TrajectoryGenerator,"/trajectory_generator", 1)
         self.publisher_time_debug = self.create_publisher(TimeDebug,"/time_debug", 1)
+        # Arm topic 
+        self.subscriber_arm = self.create_subscription(JointState, '/passive_arm_joint_states',self.get_arm_interface_callback, 1)
         # Arm interface publisher
-        self.publisher_arm_interface = self.create_publisher(PassiveArmState,"/passive_arm_state", 1)
+        self.publisher_arm_interface = self.create_publisher(PassiveArmState,"/mpc_arm_infos", 1)
+        self.publisher_zmp_msg = self.create_publisher(ZmpComputeMsg,"/zmp_topic",1)
         self.rest_client = self.create_client(Trigger, 'set_rest_position')
         if(USE_SCHEDULER):
             self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_control_callback)
@@ -488,7 +492,7 @@ class Quadruped_PyMPC_Node(Node):
         base_ang_vel = self.env.base_ang_vel(frame='base')
         base_ori_euler_xyz = self.env.base_ori_euler_xyz
         base_pos = self.env.base_pos
-        com_pos = self.env.com
+        com_pos = self.env.com 
 
         #arm states
         arm_joint_pos = self.arm_joint_pos.copy()
@@ -714,9 +718,40 @@ class Quadruped_PyMPC_Node(Node):
 
         passive_arm_msg = PassiveArmState()
         passive_arm_msg.passive_arm_joint_position = np.concatenate([self.arm_joint_pos], axis=0).flatten()
-        passive_arm_msg.passive_arm_joint_velocity = np.concatenate([arm_joint_vel], axis=0).flatten()
+        passive_arm_msg.passive_arm_joint_velocity = np.concatenate([self.arm_joint_vel], axis=0).flatten()
         passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
+        passive_arm_msg.passive_arm_eef_position = np.concatenate([state_current['end_effector_position']], axis=0).flatten()
         self.publisher_arm_interface.publish(passive_arm_msg)
+
+
+        # zmp=compute_zmp(np.array([base_pos[0],base_pos[1],base_pos[2]]),
+        #                 base_acc, #imu?? this should eb also present in
+        #                 base_ori_euler_xyz,
+        #                 np.concatenate([state_current['wrench_estimated']], axis=0).flatten(),
+        #                 eef_pos_mjco, # I can get this from mujoco or from the estimator too passive_arm_eef_position
+        #                 )
+        
+        
+        # # zmp=-1 * zmp
+        # zmp_margin=compute_zmp_margin(zmp,self.nmpc_footholds,self.contact_sequence) # this is full missing two entires in zmp
+        # cop=compute_center_of_pressure(np.array([base_pos[0],base_pos[1],0]),base_ori_euler_xyz,feet_pos,self.nmpc_GRFs)
+        ###
+
+        
+        ### ZMP MESSAGE
+        zmp_msg = ZmpComputeMsg()
+        zmp_msg.com_pos = base_pos
+        # zmp_msg.com_acc = 100
+        zmp_msg.com_ori = base_ori_euler_xyz
+        zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
+        zmp_msg.eef_pos = np.concatenate([state_current['end_effector_position']], axis=0).flatten()
+        # zmp_msg.footholds = self.nmpc_footholds
+        # zmp_msg.contact =  self.contact_sequence
+        # zmp_msg.nmpc_grfs = self.nmpc_GRFs
+        self.publisher_zmp_msg.publish(zmp_msg)
+
+        
+
 
 
 

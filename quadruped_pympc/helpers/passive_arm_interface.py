@@ -31,7 +31,7 @@ class Passive_Arm_Interface:
         self.p3 = np.array([0.0388, 0.0, -0.25])
         ###
         self.gravity_value=9.81
-        self.flag_gravity_torque= 1
+        self.flag_gravity_torque= 0 #off in new config
         self.flag_damping_torque= 1
         self.flag_spring_torque = 1
         self.torque0=np.zeros(3,)
@@ -197,9 +197,9 @@ class Passive_Arm_Interface:
 
             # third joint
             if i == 2:
-                tau_spring[i] = - k_spring[i] * (q[i] + self.joint_pos0[i])  
+                tau_spring[i] = - k_spring[i] * (q[i] )  
             elif i == 1:
-                tau_spring[i] = - k_spring[i] * (q[i]-self.joint_pos0[i])  
+                tau_spring[i] = - k_spring[i] * (q[i])  
 
             else:
                 tau_spring[i] = - k_spring[i] * length_spring[i]
@@ -272,6 +272,9 @@ class Passive_Arm_Interface:
         fee is the force in the end effector frame
 
         '''
+
+        ## Update rest position test for real robot case:
+        # self.joint_pos0 = arm_rest_pos_int not needed already feeding realtive positions
         # Arm Jacobian Calculation --------------------------------------------------------------------------------------
 
         Jee_calc =self.updateJacobian(Jee,arm_joint_pos,self.p1,self.p2,self.p3)
@@ -343,13 +346,13 @@ class Passive_Arm_Interface:
         '''
             #compute the velocityself
         if (arm_joint_pos_curr[2]   > 20 *np.pi/180.0):
-            ref_vel_x=0.2
-        elif (arm_joint_pos_curr[2] > 10 *np.pi/180.0):
             ref_vel_x=0.1
+        elif (arm_joint_pos_curr[2] > 10 *np.pi/180.0):
+            ref_vel_x=0.05
         elif (arm_joint_pos_curr[2]  < -20 *np.pi/180.0):
-            ref_vel_x=-0.2
-        elif (arm_joint_pos_curr[2]< -10 *np.pi/180.0):
             ref_vel_x=-0.1
+        elif (arm_joint_pos_curr[2]< -10 *np.pi/180.0):
+            ref_vel_x=-0.05
         else:
             ref_vel_x=0.0
 

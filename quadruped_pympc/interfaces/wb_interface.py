@@ -286,6 +286,7 @@ class WBInterface:
         
         # Rotate the reference base linear velocity to the terrain frame
         ref_base_lin_vel = R.from_euler("xyz", [terrain_roll, terrain_pitch, 0]).as_matrix() @ ref_base_lin_vel
+        ##ßtairs hack
         if(terrain_pitch > 0.0):
             ref_base_lin_vel[2] = -ref_base_lin_vel[2]
         if(np.abs(terrain_pitch) > 0.2):
@@ -328,9 +329,10 @@ class WBInterface:
                                                         )
         # wrench_estimate[2] = 0
         # wrench_estimate[3:] = 0  #only forces considered for now
-        self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
+        # self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
 
         state_current['wrench_estimated']=wrench_estimate
+        state_current['end_effector_position']= end_effector_position
         if cfg.mpc_params['optimize_step_freq']:
             # we can always optimize the step freq, or just at the apex of the swing
             # to avoid possible jittering in the solution
