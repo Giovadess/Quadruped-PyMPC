@@ -6,7 +6,7 @@ from quadruped_pympc.helpers.quadruped_utils import GaitType
 
 # These are used both for a real experiment and a simulation -----------
 # These are the only attributes needed per quadruped, the rest can be computed automatically ----------------------
-robot = 'aliengo'  # 'aliengo', 'go1', 'go2', 'b2', 'hyqreal1', 'hyqreal2', 'mini_cheetah'  # TODO: Load from robot_descriptions.py
+robot = 'aliengo_follower'  # 'aliengo', 'go1', 'go2', 'b2', 'hyqreal1', 'hyqreal2', 'mini_cheetah'  # TODO: Load from robot_descriptions.py
 
 from gym_quadruped.robot_cfgs import RobotConfig, get_robot_config
 robot_cfg: RobotConfig = get_robot_config(robot_name=robot)
@@ -59,7 +59,24 @@ elif (robot == 'mini_cheetah'):
                         [1.21660000e-04, 4.68645637e-01, -3.12000000e-05],
                         [-1.55444692e-02, -3.12000000e-05, 5.24474661e-01]])
 
+elif (robot == 'aliengo_follower'):
+    mass = 25.5
+    inertia = np.array([[0.2310941359705289, -0.0014987128245817424, -0.021400468992761768],
+                        [-0.0014987128245817424, 1.4485084687476608, 0.0004641447134275615],
+                        [-0.021400468992761768, 0.0004641447134275615, 1.503217877350808]])
+    # robot_leg_joints = dict(FL=['follower/FL_hip_joint', 'follower/FL_thigh_joint', 'follower/FL_calf_joint',],  # TODO: Make configs per robot.
+    #                     FR=['follower/FR_hip_joint', 'follower/FR_thigh_joint', 'follower/FR_calf_joint',],
+    #                     RL=['follower/RL_hip_joint', 'follower/RL_thigh_joint', 'follower/RL_calf_joint',],
+    #                     RR=['follower/RR_hip_joint', 'follower/RR_thigh_joint', 'follower/RR_calf_joint',])
+    
+    # robot_feet_geom_names = dict(FL='FL2', FR='FR2', RL='RL2', RR='RR2')
 
+    # arm_joint_names = ['follower/arm_link_1_joint_pos', 'follower/arm_link_2_joint_pos', 
+    #                    'follower/arm_link_3_joint_pos','follower/eef_contact']
+
+    # legorder=['FL2','FR2','RL2','RR2']
+    # urdf_filename = "aliengo_passive_arm.urdf"
+    # hip_height = 0.3
 gravity_constant = 9.81 # Exposed in case of different gravity conditions
 # ----------------------------------------------------------------------------------------------------------------
 
@@ -148,7 +165,7 @@ mpc_params = {
     'use_zmp_stability':                       True,
     'trot_stability_margin':                   0.04,
     'pace_stability_margin':                   0.1,
-    'crawl_stability_margin':                  0.02,  # in general, 0.02 is a good value
+    'crawl_stability_margin':                  0.04,  # in general, 0.02 is a good value
 
     # this is used to compensate for the external wrenches
     # you should provide explicitly this value in compute_control
@@ -218,7 +235,7 @@ simulation_params = {
     'reflex_trigger_mode':       'tracking', # 'tracking', 'geom_contact', False
     'reflex_max_step_height':    0.5 * hip_height,  # this is the maximum step height that the robot can do if reflexes are enabled
     'reflex_next_steps_height_enhancement': False,
-    'velocity_modulator': True,
+    'velocity_modulator': False,
 
     # velocity mode: human will give you the possibility to use the keyboard, the other are
     # forward only random linear-velocity, random will give you random linear-velocity and yaw-velocity

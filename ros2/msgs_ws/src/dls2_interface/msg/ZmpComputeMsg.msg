@@ -8,3 +8,5 @@ float64[3] eef_pos
 float64[4] footholds
 float64[4] contact
 float64[4] nmpc_grfs
+float64[3] zmp
+float64[] zmp_margin

@@ -1146,7 +1146,7 @@ class Arm_Augmented_MPC:
         k = state['spring_gains']
         d = state['damping_gains']
         arm_rest_position = reference['ref_arm_position']
-        mass = 26.523 # this is the one out of adam
+        mass = 25.523 # this is the one out of adam
         # print("Spring gains: ", k)
         # print("Damping gains: ", d)
         for j in range(self.horizon):

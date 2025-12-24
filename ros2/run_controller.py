@@ -25,6 +25,11 @@ from std_srvs.srv import Trigger
 
 import sys
 import os 
+
+
+from quadruped_pympc.helpers.zmp_utils import compute_zmp,plot_zmp_vis,compute_center_of_pressure,compute_zmp_margin
+
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
 
 # Set the priority of the process
@@ -43,11 +48,11 @@ os.system("sudo echo -20 > /proc/" + str(pid) + "/autogroup")
 #for real time, launch it with chrt -r 99 python3 run_controller.py
 
 
-USE_DLS_CONVENTION = True
+USE_DLS_CONVENTION = False
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = True
+USE_PROCESS_SHARED_MEMORY_MPC = False
 
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
@@ -143,6 +148,8 @@ class Quadruped_PyMPC_Node(Node):
         self.arm_joint_pos = np.zeros(3)
         self.arm_joint_vel = np.zeros(3)
         self.external_wrenches = np.zeros(6)
+
+        self.zmp = np.zeros(3)
 
         # Mujoco env
         self.env = QuadrupedEnv(
@@ -394,7 +401,7 @@ class Quadruped_PyMPC_Node(Node):
         self.orientation = np.roll(np.array(msg.pose.orientation), 1)
         # For the angular velocity, mujoco is in the base frame, and DLS2 is in the world frame
         self.angular_velocity = np.array(msg.velocity.angular) 
-        # self.stance_status = np.array(msg.stance_status)
+        self.stance_status = np.array(msg.stance_status)
 
         self.first_message_base_arrived = True
 
@@ -473,11 +480,39 @@ class Quadruped_PyMPC_Node(Node):
         self.env.mjData.qpos[0:3] = copy.deepcopy(self.position)
         #self.env.mjData.qpos[0:2] = copy.deepcopy(self.position[0:2])
         #self.env.mjData.qpos[2] = copy.deepcopy(self.wb_interface.terrain_computation.terrain_height) # Proprioceptive height estimation
-        self.env.mjData.qpos[3:7] = copy.deepcopy(self.orientation)
-        self.env.mjData.qvel[0:3] = copy.deepcopy(self.linear_velocity)
-        self.env.mjData.qvel[3:6] = copy.deepcopy(self.angular_velocity)
-        self.env.mjData.qpos[7:] = copy.deepcopy(self.joint_positions)
-        self.env.mjData.qvel[6:] = copy.deepcopy(self.joint_velocities)
+        self.env.mjData.qpos[3:7] = copy.deepcopy(self.orientation) #robot orientation
+        self.env.mjData.qvel[0:3] = copy.deepcopy(self.linear_velocity) #robot linear velocity
+        self.env.mjData.qvel[3:6] = copy.deepcopy(self.angular_velocity) #robot angular velocity
+
+        # Joint positions and velocities coming from dls2 interface I need to add the arm to use them in mujoco kinematics
+        # using the mujoco simulation this are filled by mujoco itself as a ros topic but if I use dls2 or the real robot I need to set them from the
+        # encoder readings
+
+        if USE_DLS_CONVENTION:
+            # Fix convention DLS2
+                    #arm states
+            # arm_joint_pos = self.arm_joint_pos.copy()
+            # arm_joint_vel = self.arm_joint_vel.copy()
+            # self.joint_positions[12:]= np.array([0.1,0.1,0.1])
+            # self.joint_velocities[12:]= np.array([0.3,0.3,0.3])
+            # print("shape joint pos:", self.joint_positions.shape)
+            # print("inside dls convention")
+            arm_joint_pos = self.arm_joint_pos.copy()*0
+            arm_joint_vel = self.arm_joint_vel.copy()*0
+        else:
+            arm_joint_pos = copy.deepcopy(self.joint_positions[12:])  #arm states
+            arm_joint_pos[1] = - arm_joint_pos[1] -0.1  #fix convention
+            arm_joint_vel = copy.deepcopy(self.joint_velocities[12:])
+        # print("shape joint pos:", self.joint_positions.shape)
+
+
+        # self.env.mjData.qpos[7:] = copy.deepcopy(self.joint_positions)  #joint positions 
+        # self.env.mjData.qvel[6:] = copy.deepcopy(self.joint_velocities) #joint velocities
+
+        self.env.mjData.qpos[7:] = np.concatenate((copy.deepcopy(self.joint_positions[0:12]), arm_joint_pos), axis=0)  #joint positions
+        self.env.mjData.qvel[6:] = np.concatenate((copy.deepcopy(self.joint_velocities[0:12]), arm_joint_vel), axis=0) #joint velocities
+
+
         self.env.mjModel.opt.timestep = simulation_dt
         self.env.mjModel.opt.disableflags = 16 # Disable the collision detection
         mujoco.mj_forward(self.env.mjModel, self.env.mjData)   
@@ -493,11 +528,7 @@ class Quadruped_PyMPC_Node(Node):
         base_ori_euler_xyz = self.env.base_ori_euler_xyz
         base_pos = self.env.base_pos
         com_pos = self.env.com 
-
-        #arm states
-        arm_joint_pos = self.arm_joint_pos.copy()
-        arm_joint_vel = self.arm_joint_vel.copy()
-        
+        eef_pos = self.env.mjData.site('eef').xpos #adding end effector position for arm from mujoco
         # print("arm joint pos control:", arm_joint_pos)
 
         # Get the reference base velocity in the world frame
@@ -555,7 +586,8 @@ class Quadruped_PyMPC_Node(Node):
                                                 ref_base_ang_vel,
                                                 mujoco_contact,
                                                 arm_joint_pos,
-                                                arm_joint_vel
+                                                arm_joint_vel,
+                                                eef_pos,
                                                 
                                                 )
         ## arm related stuff
@@ -720,7 +752,7 @@ class Quadruped_PyMPC_Node(Node):
         passive_arm_msg.passive_arm_joint_position = np.concatenate([self.arm_joint_pos], axis=0).flatten()
         passive_arm_msg.passive_arm_joint_velocity = np.concatenate([self.arm_joint_vel], axis=0).flatten()
         passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
-        passive_arm_msg.passive_arm_eef_position = np.concatenate([state_current['end_effector_position']], axis=0).flatten()
+        passive_arm_msg.passive_arm_eef_position = eef_pos
         self.publisher_arm_interface.publish(passive_arm_msg)
 
 
@@ -737,6 +769,18 @@ class Quadruped_PyMPC_Node(Node):
         # cop=compute_center_of_pressure(np.array([base_pos[0],base_pos[1],0]),base_ori_euler_xyz,feet_pos,self.nmpc_GRFs)
         ###
 
+
+        zmp = compute_zmp(base_pos,
+                          base_pos,
+                          base_ori_euler_xyz,
+                          state_current['wrench_estimated'],
+                          eef_pos)
+        # print("contact state:", self.feet_contact)
+        # contact_state, _, feet_GRF = self.env.feet_contact_state(ground_reaction_forces=True
+        
+        zmp_margin=compute_zmp_margin(zmp,feet_pos, self.feet_contact)
+        # print("contact_state:", contact_state)
+
         
         ### ZMP MESSAGE
         zmp_msg = ZmpComputeMsg()
@@ -744,7 +788,9 @@ class Quadruped_PyMPC_Node(Node):
         # zmp_msg.com_acc = 100
         zmp_msg.com_ori = base_ori_euler_xyz
         zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
-        zmp_msg.eef_pos = np.concatenate([state_current['end_effector_position']], axis=0).flatten()
+        zmp_msg.eef_pos = eef_pos
+        zmp_msg.zmp = zmp
+        zmp_msg.zmp_margin = [zmp_margin]
         # zmp_msg.footholds = self.nmpc_footholds
         # zmp_msg.contact =  self.contact_sequence
         # zmp_msg.nmpc_grfs = self.nmpc_GRFs

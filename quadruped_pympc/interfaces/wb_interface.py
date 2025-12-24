@@ -140,6 +140,7 @@ class WBInterface:
         mujoco_contact: np.ndarray = None,
         arm_joint_pos: np.ndarray = np.zeros((3,)),
         arm_joint_vel: np.ndarray = np.zeros((3,)),
+        eef_pos_mujoco: np.ndarray = np.zeros((3,)),
     ) -> [dict, dict, list, LegsAttr, list, list, float, bool,float,float]:
         """Update the state and reference for the whole body controller, including the contact sequence, footholds, and terrain estimation.
 

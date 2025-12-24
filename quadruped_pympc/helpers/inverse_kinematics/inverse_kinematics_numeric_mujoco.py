@@ -34,7 +34,7 @@ from quadruped_pympc import config as cfg
 IT_MAX = 5
 DT = 1e-2
 damp = 1e-3
-damp_matrix = damp * np.eye(12)
+damp_matrix = damp * np.eye(15)
 
 
 # Class for solving a generic inverse kinematics problem
@@ -104,7 +104,6 @@ class InverseKinematicsNumeric:
 
             total_jac = np.vstack((J_FL, J_FR, J_RL, J_RR))
             total_err = 100*np.hstack((err_FL, err_FR, err_RL, err_RR))
-
             # Solve the IK problem
             #dq = total_jac.T @ np.linalg.solve(total_jac @ total_jac.T + damp_matrix, total_err)
             damped_pinv = np.linalg.inv(total_jac.T @ total_jac + damp_matrix) @ total_jac.T
@@ -114,6 +113,7 @@ class InverseKinematicsNumeric:
             q_joint = self.env.mjData.qpos.copy()[7:]
             q_joint += dq * DT
             self.env.mjData.qpos[7:] = q_joint
+
 
             mujoco.mj_fwdPosition(self.env.mjModel, self.env.mjData)
             #mujoco.mj_kinematics(self.env.mjModel, self.env.mjData)

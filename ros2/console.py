@@ -362,7 +362,7 @@ class Console():
                         # if(command == "o"):
                         #     print("Exiting Velocity Follower")
                         #     break
-                        time.sleep(2)
+                        time.sleep(10)
                         if self.controller_node.wb_interface.ref_base_lin_vel_pacc ==0 and self.controller_node.wb_interface.ref_base_ang_vel_pacc==0:
                             self.controller_node.env._ref_base_lin_vel_H[0] = 0
                             self.controller_node.env._ref_base_lin_vel_H[1] = 0
