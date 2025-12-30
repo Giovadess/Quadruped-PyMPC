@@ -52,7 +52,7 @@ USE_DLS_CONVENTION = False
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = False
+USE_PROCESS_SHARED_MEMORY_MPC = True
 
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
@@ -488,21 +488,21 @@ class Quadruped_PyMPC_Node(Node):
         # using the mujoco simulation this are filled by mujoco itself as a ros topic but if I use dls2 or the real robot I need to set them from the
         # encoder readings
 
-        if USE_DLS_CONVENTION:
-            # Fix convention DLS2
-                    #arm states
-            # arm_joint_pos = self.arm_joint_pos.copy()
-            # arm_joint_vel = self.arm_joint_vel.copy()
-            # self.joint_positions[12:]= np.array([0.1,0.1,0.1])
-            # self.joint_velocities[12:]= np.array([0.3,0.3,0.3])
-            # print("shape joint pos:", self.joint_positions.shape)
-            # print("inside dls convention")
-            arm_joint_pos = self.arm_joint_pos.copy()*0
-            arm_joint_vel = self.arm_joint_vel.copy()*0
-        else:
-            arm_joint_pos = copy.deepcopy(self.joint_positions[12:])  #arm states
-            arm_joint_pos[1] = - arm_joint_pos[1] -0.1  #fix convention
-            arm_joint_vel = copy.deepcopy(self.joint_velocities[12:])
+        # if USE_DLS_CONVENTION:
+        #     # Fix convention DLS2
+        #             #arm states
+        arm_joint_pos = self.arm_joint_pos.copy()
+        arm_joint_vel = self.arm_joint_vel.copy()
+        #     # self.joint_positions[12:]= np.array([0.1,0.1,0.1])
+        #     # self.joint_velocities[12:]= np.array([0.3,0.3,0.3])
+        #     # print("shape joint pos:", self.joint_positions.shape)
+        #     # print("inside dls convention")
+        #     arm_joint_pos = self.arm_joint_pos.copy()*0
+        #     arm_joint_vel = self.arm_joint_vel.copy()*0
+        # else:
+        #     arm_joint_pos = copy.deepcopy(self.joint_positions[12:])  #arm states
+        #     arm_joint_pos[1] = - arm_joint_pos[1] -0.1  #fix convention
+        #     arm_joint_vel = copy.deepcopy(self.joint_velocities[12:])
         # print("shape joint pos:", self.joint_positions.shape)
 
 
@@ -590,28 +590,19 @@ class Quadruped_PyMPC_Node(Node):
                                                 eef_pos,
                                                 
                                                 )
-        ## arm related stuff
-        # external_wrenches = np.zeros((6,))
-        # arm_joint_pos = np.zeros((3,))
-        # arm_joint_vel = np.zeros((3,))
 
-        # state_current['arm_joint_pos']=self.arm_joint_pos #rosnodearduino
-        # state_current['arm_joint_vel']=self.arm_joint_vel #rosnodearduino
-
-        # print("arm joint pos:", state_current['arm_joint_pos'])
-        # print("wrench estimated:", state_current['wrench_estimated'])
-
-        # state_current['wrench_estimated']=np.zeros(6) #arm_interface_wrench_est
-        # state_current['spring_gains'] =np.array([5,5,5]) #config 
-        # state_current['damping_gains']=np.array([0.5,0.5,0.5]) #config
-
-        # ref_state['ref_arm_position']=np.zeros(3) #rosinterface 
-        # ref_state['ref_arm_velocity']=np.zeros(3) #rosinterface
         
         # Console commands hacks
         ref_state["ref_position"][2] += self.console.height_delta
         ref_state["ref_orientation"][1] += self.console.pitch_delta
 
+        # print("REF CHECK FOR ARM")
+        # print("ref arm pos:", ref_state["ref_arm_position"])
+        # print("ref arm vel:", ref_state["ref_arm_velocity"])
+        # print("STATE CHECK FOR ARM")
+        # print("state arm pos:", state_current["arm_joint_pos"])
+        # print("state arm vel:", state_current["arm_joint_vel"])
+        # print("external_wrenches:", state_current['wrench_estimated'])
 
         
         # Publish to the MPC controller
@@ -795,6 +786,7 @@ class Quadruped_PyMPC_Node(Node):
         # zmp_msg.contact =  self.contact_sequence
         # zmp_msg.nmpc_grfs = self.nmpc_GRFs
         self.publisher_zmp_msg.publish(zmp_msg)
+        print("mujoco eef pos:", eef_pos)
 
         
 

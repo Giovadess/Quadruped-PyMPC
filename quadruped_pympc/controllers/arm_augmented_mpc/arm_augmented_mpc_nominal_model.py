@@ -220,6 +220,8 @@ class Arm_Augmented_Centroidal_Model:
 
         self.mass = cs.SX.sym("mass", 1, 1)
 
+        self.eef_position_world = cs.SX.sym("eef_position_world", 3, 1)
+
         ### ARM AUGMENTATION
         self.k = cs.SX.sym("k",3,1)
         self.d = cs.SX.sym("D",3,1)
@@ -395,6 +397,7 @@ class Arm_Augmented_Centroidal_Model:
         jac_eef_arm = J_eval[:, -3:]           # 6 x 3 arm-only
 
         p_eef = self.fk_arm_fun(self.full_joint_pos_update)  # 3×1 SX
+        self.eef_position_world = p_eef
 
         
         

@@ -60,23 +60,11 @@ elif (robot == 'mini_cheetah'):
                         [-1.55444692e-02, -3.12000000e-05, 5.24474661e-01]])
 
 elif (robot == 'aliengo_follower'):
-    mass = 25.5
+    mass = 26.0
     inertia = np.array([[0.2310941359705289, -0.0014987128245817424, -0.021400468992761768],
                         [-0.0014987128245817424, 1.4485084687476608, 0.0004641447134275615],
                         [-0.021400468992761768, 0.0004641447134275615, 1.503217877350808]])
-    # robot_leg_joints = dict(FL=['follower/FL_hip_joint', 'follower/FL_thigh_joint', 'follower/FL_calf_joint',],  # TODO: Make configs per robot.
-    #                     FR=['follower/FR_hip_joint', 'follower/FR_thigh_joint', 'follower/FR_calf_joint',],
-    #                     RL=['follower/RL_hip_joint', 'follower/RL_thigh_joint', 'follower/RL_calf_joint',],
-    #                     RR=['follower/RR_hip_joint', 'follower/RR_thigh_joint', 'follower/RR_calf_joint',])
-    
-    # robot_feet_geom_names = dict(FL='FL2', FR='FR2', RL='RL2', RR='RR2')
 
-    # arm_joint_names = ['follower/arm_link_1_joint_pos', 'follower/arm_link_2_joint_pos', 
-    #                    'follower/arm_link_3_joint_pos','follower/eef_contact']
-
-    # legorder=['FL2','FR2','RL2','RR2']
-    # urdf_filename = "aliengo_passive_arm.urdf"
-    # hip_height = 0.3
 gravity_constant = 9.81 # Exposed in case of different gravity conditions
 # ----------------------------------------------------------------------------------------------------------------
 
@@ -174,7 +162,7 @@ mpc_params = {
 
     # this is used only in the case of collaborative mpc, to
     # compensate for the external wrench in the prediction (only collaborative)
-    'passive_arm_compensation':                False,
+    'passive_arm_compensation':                True,
 
 
     # Gain for Lyapunov-based MPC
@@ -201,8 +189,9 @@ mpc_params = {
     'sigma_random_sampling':                   [0.2, 3, 10],
     'shift_solution':                          False,
 
-    'arm_spring_gains':                       np.array([3.5, 8.5, 3.0]),
-    'arm_damping_gains':                      np.array([0.25, 1.43, 0.1]),
+    # 'arm_spring_gains':                       np.array([3.5,22, 33]),
+    'arm_spring_gains':                       np.array([5, 5, 5]), 
+    'arm_damping_gains':                      np.array([0.5,0.5, 0.5]),
 
     # ----- END properties for the sampling-based mpc -----
     }

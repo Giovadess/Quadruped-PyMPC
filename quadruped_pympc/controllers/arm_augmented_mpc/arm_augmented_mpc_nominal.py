@@ -285,8 +285,9 @@ class Arm_Augmented_MPC:
             zmp = base_w[0:2] - linear_com_acc[0:2]*(robotHeight/(-gravity[2]))
 
 
-            external_forces_linear = self.centroidal_model.states[30:33]
-            end_effector_position = self.centroidal_model.param[19:22]
+            external_forces_linear = self.centroidal_model.states[30:33] #state??
+            end_effector_position = self.centroidal_model.eef_position_world #this is wrong its currently using the spring value!!! I still need to pass a param
+            # end_effector_position = self.centroidal_model.param[19:22]
 
             zmp_x = self.centroidal_model.mass*-gravity[2]*base_w[0] - base_w[2]*self.centroidal_model.mass*linear_com_acc[0]
             zmp_x = zmp_x + end_effector_position[0]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[0]
@@ -1299,12 +1300,17 @@ class Arm_Augmented_MPC:
 
         # Set the parameters to  acados
         for j in range(self.horizon):
-            # If we have estimated an external wrench, we can compensate it for all steps
-            # or less (maybe the disturbance is not costant along the horizon!)
-            if (config.mpc_params['external_wrenches_compensation'] and
-                    config.mpc_params['external_wrenches_compensation_num_step'] and
-                    j < config.mpc_params['external_wrenches_compensation_num_step']):
-                external_wrenches_estimated_param = copy.deepcopy(external_wrenches)
+            # # If we have estimated an external wrench, we can compensate it for all steps
+            # # or less (maybe the disturbance is not costant along the horizon!)
+            # if (config.mpc_params['external_wrenches_compensation'] and
+            #         config.mpc_params['external_wrenches_compensation_num_step'] and
+            #         j < config.mpc_params['external_wrenches_compensation_num_step']):
+            #     external_wrenches_estimated_param = copy.deepcopy(external_wrenches)
+            #     external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
+            # else:
+            #     external_wrenches_estimated_param = np.zeros((6,))
+            if (config.mpc_params['passive_arm_compensation']):
+                external_wrenches_estimated_param = copy.deepcopy(state['wrench_estimated'])
                 external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
             else:
                 external_wrenches_estimated_param = np.zeros((6,))
@@ -1319,8 +1325,8 @@ class Arm_Augmented_MPC:
                               state["position"][0], state["position"][1],
                               state["position"][2], state["orientation"][2],
                               external_wrenches_estimated_param[0], external_wrenches_estimated_param[1],
-                              external_wrenches_estimated_param[2], external_wrenches_estimated_param[3],
-                              external_wrenches_estimated_param[4], external_wrenches_estimated_param[5],
+                              external_wrenches_estimated_param[2], external_wrenches_estimated_param[3]*0,
+                              external_wrenches_estimated_param[4]*0, external_wrenches_estimated_param[5]*0,
                               k[0],k[1],k[2],
                               d[0],d[1],d[2],
                               arm_rest_position[0], arm_rest_position[1], arm_rest_position[2]

@@ -316,7 +316,7 @@ class WBInterface:
                 ref_angular_velocity=ref_base_ang_vel,
                 ref_orientation=np.array([terrain_roll, terrain_pitch, 0.0]),
                 ref_position=ref_pos,
-                ref_arm_position=np.zeros(3),  #hard coded may need to update with rest position??
+                ref_arm_position=arm_joint_pos,  #hard coded may need to update with rest position??
                 ref_arm_velocity=np.zeros(3),  #hard coded
             )
 
@@ -327,12 +327,14 @@ class WBInterface:
                                                         arm_joint_pos,
                                                         arm_joint_vel,
                                                         base_ori_euler_xyz, #replace this with actual rot matrix?
+                                                        joint_pos0= arm_joint_pos
                                                         )
-        # wrench_estimate[2] = 0
+        wrench_estimate[1] = -wrench_estimate[1]  #correct for different y axis definition
         # wrench_estimate[3:] = 0  #only forces considered for now
         # self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
-
+        wrench_estimate[3:] = np.zeros((3,))  #disable torque estimation for now
         state_current['wrench_estimated']=wrench_estimate
+        # state_current['wrench_estimated']=np.array([0.0,0.0,0.0,0.0,0.0,0.0])  #disable for testing with hardcoded values
         state_current['end_effector_position']= end_effector_position
         if cfg.mpc_params['optimize_step_freq']:
             # we can always optimize the step freq, or just at the apex of the swing

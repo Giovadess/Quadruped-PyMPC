@@ -2,6 +2,8 @@ import rclpy
 from rclpy.node import Node 
 
 from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug
+from sensor_msgs.msg import JointState
+
 
 import time
 import numpy as np
@@ -31,6 +33,7 @@ class Simulator_Node(Node):
         # Subscribers and Publishers
         self.publisher_base_state = self.create_publisher(BaseState,"/base_state", 1)
         self.publisher_blind_state = self.create_publisher(BlindState,"/blind_state", 1)
+        self.publisher_arm_state = self.create_publisher(JointState, '/passive_arm_joint_states', 1)
         self.subscriber_control_signal = self.create_subscription(ControlSignal,"/quadruped_pympc_torques", self.get_torques_callback, 1)
         self.subscriber_trajectory_generator = self.create_subscription(TrajectoryGenerator,"/trajectory_generator", self.get_trajectory_generator_callback, 1)
 
@@ -111,7 +114,14 @@ class Simulator_Node(Node):
         blind_state_msg = BlindState()
         blind_state_msg.joints_position = self.env.mjData.qpos[7:].tolist()
         blind_state_msg.joints_velocity = self.env.mjData.qvel[6:].tolist()
+        feet_contact,_ = self.env.feet_contact_state()
+        blind_state_msg.feet_contact= list(feet_contact)
         self.publisher_blind_state.publish(blind_state_msg)
+
+        arm_state_msg = JointState()
+        arm_state_msg.position = self.env.mjData.qpos[19:].tolist()
+        arm_state_msg.velocity = self.env.mjData.qvel[18:].tolist()
+        self.publisher_arm_state.publish(arm_state_msg)
 
 
         # Render only at a certain frequency -----------------------------------------------------------------

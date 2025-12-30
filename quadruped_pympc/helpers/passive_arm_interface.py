@@ -197,9 +197,9 @@ class Passive_Arm_Interface:
 
             # third joint
             if i == 2:
-                tau_spring[i] = - k_spring[i] * (q[i] )  
+                tau_spring[i] = - k_spring[i] * (q[i]+ self.joint_pos0[i])  
             elif i == 1:
-                tau_spring[i] = - k_spring[i] * (q[i])  
+                tau_spring[i] = - k_spring[i] * (q[i]- self.joint_pos0[i])  
 
             else:
                 tau_spring[i] = - k_spring[i] * length_spring[i]
@@ -257,7 +257,7 @@ class Passive_Arm_Interface:
     
 
 
-    def calculate_force_estimates_damping(self,Jee,arm_joint_pos,arm_joint_vel,base_orientation):
+    def calculate_force_estimates_damping(self,Jee,arm_joint_pos,arm_joint_vel,base_orientation,joint_pos0):
         '''
         This function calculates the estimated end-effector force according to section C1 of the paper
         fee=-(Jee^T)^-1 * (tau_spring+tau_g+tau_d)
@@ -276,7 +276,7 @@ class Passive_Arm_Interface:
         ## Update rest position test for real robot case:
         # self.joint_pos0 = arm_rest_pos_int not needed already feeding realtive positions
         # Arm Jacobian Calculation --------------------------------------------------------------------------------------
-
+        self.joint_pos0= joint_pos0
         Jee_calc =self.updateJacobian(Jee,arm_joint_pos,self.p1,self.p2,self.p3)
         Jee_calc=Jee
         Jee_transpose_inv = np.linalg.inv(Jee_calc.T)
@@ -299,6 +299,7 @@ class Passive_Arm_Interface:
         skew_matrix = self.skew_mat(Pee_Brobot) #thew skew matrix uses the eef pos in the base of the robot
         # print("skew_matrix",skew_matrix)
         tau_spring=self.updateSpringTorque(arm_joint_pos,self.spring_gains)
+
         tau_g=self.updateGravityTorque(arm_joint_pos,self.p2,self.p3) #gravity torque
 
         tau_d=self.updateDampingTorque(arm_joint_vel,self.damping_gains)
