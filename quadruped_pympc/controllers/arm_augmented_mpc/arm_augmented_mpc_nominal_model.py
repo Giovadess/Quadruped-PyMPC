@@ -220,7 +220,7 @@ class Arm_Augmented_Centroidal_Model:
 
         self.mass = cs.SX.sym("mass", 1, 1)
 
-        self.eef_position_world = cs.SX.sym("eef_position_world", 3, 1)
+        self.eef_position = cs.SX.sym("eef_position", 3, 1)
 
         ### ARM AUGMENTATION
         self.k = cs.SX.sym("k",3,1)
@@ -332,6 +332,11 @@ class Arm_Augmented_Centroidal_Model:
 
         k = param[19:22] #spring constant
         d = param[22:25] #damping constant
+        # eef_position = param[26:29] #end effector position
+        # q_arm_rest_1 = param[25]
+        # q_arm_rest_2 = param[26]
+        # q_arm_rest_3 = param[27]
+        p_eef = param[28:31]
 
 
         roll = states[6]
@@ -396,8 +401,10 @@ class Arm_Augmented_Centroidal_Model:
         J_eval = self.jac_arm_fun(self.full_joint_pos_update)   # 6 x nv
         jac_eef_arm = J_eval[:, -3:]           # 6 x 3 arm-only
 
-        p_eef = self.fk_arm_fun(self.full_joint_pos_update)  # 3×1 SX
-        self.eef_position_world = p_eef
+        # p_eef = self.fk_arm_fun(self.full_joint_pos_update)  # 3×1 SX 
+        # self.eef_position_world = p_eef
+        #instead the eef position is passed as parameter from the wb_interface
+        
 
         
         
@@ -444,22 +451,11 @@ class Arm_Augmented_Centroidal_Model:
 
 
         # fill the symbolic matrices
-        ## Spring torques
-        # tau_spring[0] = - k[0] * (q_arm[0]-self.q_arm_rest_1) 
-        # tau_spring[1] = - k[1] * (q_arm[1]-self.q_arm_rest_2)
-        # tau_spring[2] = - k[2] * (q_arm[2]-self.q_arm_rest_3)
-
-        # ## Damping torques
-        # tau_damping[0] = - d[0] * (q_dot_arm[0])
-        # tau_damping[1] = - d[1] * (q_dot_arm[1])
-        # tau_damping[2] = - d[2] * (q_dot_arm[2])
 
         # Cartesian-Joint space torque (J^T @ F_ext)
-        # I can pass directly the torques from my momentum observer built on the arm analystical model
-        
-
-        wrench_estimate_lin_base = b_R_w@external_wrench_linear #linear part of the wrench estimated from the arm end effector in the world frame
-        wrench_estimate_ang_base = b_R_w@external_wrench_angular #angular part of the wrench estimated from the arm end effector in the world fram must go in base frame 
+        # I can pass directly the torques from my momentum observer built on the arm analystical mod
+        wrench_estimate_lin_base = external_wrench_linear #linear part of the wrench estimated from the arm end effector in the world frame
+        wrench_estimate_ang_base = external_wrench_angular #angular part of the wrench estimated from the arm end effector in the world fram must go in base frame 
 
         wrench_estimate_mixed = cs.vertcat(wrench_estimate_lin_base, wrench_estimate_ang_base) #wrench estimated from the arm end effector in the mixed representation
 
@@ -491,6 +487,11 @@ class Arm_Augmented_Centroidal_Model:
 
         linear_com_acc = (1/self.mass)@temp + gravity 
         angular_acc_base = cs.inv(inertia)@(b_R_w@temp2 - cs.skew(w)@inertia@w ) 
+
+
+
+
+
 
         # FINAL euler_rates_base STATE (3)
         euler_rates_base = cs.inv(conj_euler_rates)@w
@@ -543,7 +544,7 @@ class Arm_Augmented_Centroidal_Model:
  
         # dynamics
         self.param = cs.vertcat(self.stance_param, self.mu_friction, self.stance_proximity, self.base_position, 
-                                self.base_yaw, self.external_wrench,self.k,self.d,self.q_arm_rest_1,self.q_arm_rest_2,self.q_arm_rest_3)
+                                self.base_yaw, self.external_wrench,self.k,self.d,self.q_arm_rest_1,self.q_arm_rest_2,self.q_arm_rest_3,self.eef_position)
         f_expl = self.forward_dynamics(self.states, self.inputs, self.param)
         f_impl = self.states_dot - f_expl
 

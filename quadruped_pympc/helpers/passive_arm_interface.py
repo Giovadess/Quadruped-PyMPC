@@ -197,7 +197,7 @@ class Passive_Arm_Interface:
 
             # third joint
             if i == 2:
-                tau_spring[i] = - k_spring[i] * (q[i]+ self.joint_pos0[i])  
+                tau_spring[i] = - k_spring[i] * (q[i] + self.joint_pos0[i])  
             elif i == 1:
                 tau_spring[i] = - k_spring[i] * (q[i]- self.joint_pos0[i])  
 

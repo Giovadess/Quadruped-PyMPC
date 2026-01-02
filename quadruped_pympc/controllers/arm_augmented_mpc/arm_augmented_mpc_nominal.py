@@ -187,10 +187,11 @@ class Arm_Augmented_MPC:
         init_k = np.array([15,15,15])
         init_d = np.array([0.5, 0.5, 0.5])
         init_rest_pos_arm = np.array([0,0,0])
+        init_eef_position = np.array([0,0,0])
 
         ocp.parameter_values = np.concatenate((init_contact_status, init_mu, init_stance_proximity,
                                                init_base_position, init_base_yaw, init_external_wrench,
-                                               init_k,init_d,init_rest_pos_arm))
+                                               init_k,init_d,init_rest_pos_arm,init_eef_position,))
         
 
         # Set options
@@ -249,6 +250,12 @@ class Arm_Augmented_MPC:
         RL[0:2] = h_R_w @ (RL[0:2] - base_w[0:2])
         RR[0:2] = h_R_w @ (RR[0:2] - base_w[0:2])
 
+        # if (config.mpc_params['passive_arm_compensation']):
+        #     external_wrenches_estimated_param = copy.deepcopy(state['wrench_estimated'])
+        #     external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
+        # else:
+        #     external_wrenches_estimated_param = np.zeros((6,))
+
         if (self.use_static_stability):
             x = base_w[0]
             y = base_w[1]
@@ -285,9 +292,12 @@ class Arm_Augmented_MPC:
             zmp = base_w[0:2] - linear_com_acc[0:2]*(robotHeight/(-gravity[2]))
 
 
-            external_forces_linear = self.centroidal_model.states[30:33] #state??
-            end_effector_position = self.centroidal_model.eef_position_world #this is wrong its currently using the spring value!!! I still need to pass a param
+            external_forces_linear = self.centroidal_model.param[13:19] #state?? #this is not correct, should be parameter!!
+            
+            end_effector_position = self.centroidal_model.param[28:31]
             # end_effector_position = self.centroidal_model.param[19:22]
+            # print("eef pos param in zmp constr: ",end_effector_position)
+            # print("external forces param in zmp constr: ",external_forces_linear)
 
             zmp_x = self.centroidal_model.mass*-gravity[2]*base_w[0] - base_w[2]*self.centroidal_model.mass*linear_com_acc[0]
             zmp_x = zmp_x + end_effector_position[0]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[0]
@@ -543,7 +553,7 @@ class Arm_Augmented_MPC:
         Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
         Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         # # ARM AUGMENTATION
-        Q_q_arm     = np.array([0.5,0.5,0.5])    # Arm position weights - all zero
+        Q_q_arm     = np.array([50,50,50])    # Arm position weights - all zero
         Q_q_dot_arm = np.array([0.5,0.5,0.5])
 
         Q_com_position_z_integral = np.array([50])  # integral of z_com
@@ -1116,6 +1126,7 @@ class Arm_Augmented_MPC:
         state["foot_RL"] = state["foot_RL"] - state["position"]
         state["foot_RR"] = state["foot_RR"] - state["position"]
         state["position"] = np.array([0, 0, 0])
+        state["end_effector_position"] = state["end_effector_position"] - state["position"]
 
         return state, reference, constraint
 
@@ -1146,7 +1157,9 @@ class Arm_Augmented_MPC:
         # ARM AUGMENTATION
         k = state['spring_gains']
         d = state['damping_gains']
+        eef_position = state['end_effector_position']
         arm_rest_position = reference['ref_arm_position']
+        
         mass = 25.523 # this is the one out of adam
         # print("Spring gains: ", k)
         # print("Damping gains: ", d)
@@ -1325,16 +1338,26 @@ class Arm_Augmented_MPC:
                               state["position"][0], state["position"][1],
                               state["position"][2], state["orientation"][2],
                               external_wrenches_estimated_param[0], external_wrenches_estimated_param[1],
-                              external_wrenches_estimated_param[2], external_wrenches_estimated_param[3]*0,
-                              external_wrenches_estimated_param[4]*0, external_wrenches_estimated_param[5]*0,
+                              external_wrenches_estimated_param[2], external_wrenches_estimated_param[3],
+                              external_wrenches_estimated_param[4], external_wrenches_estimated_param[5],
                               k[0],k[1],k[2],
                               d[0],d[1],d[2],
-                              arm_rest_position[0], arm_rest_position[1], arm_rest_position[2]
+                              arm_rest_position[0], arm_rest_position[1], arm_rest_position[2],
+                              eef_position[0], eef_position[1], eef_position[2]
+                              
                               ])
             # print("param shape: ", param.shape)
 
             self.acados_ocp_solver.set(j, "p", copy.deepcopy(param))
-
+        ### DEBUG
+            # external_forces_linear = self.centroidal_model.param[13:16] #state?? #this is not correct, should be parameter!!
+            
+            # end_effector_position = self.centroidal_model.param[28:31]
+        # end_effector_position = self.centroidal_model.param[19:22]
+        # print("eef pos param in zmp constr: ",self.centroidal_model.param[28:31])
+        # print("external forces param in zmp constr: ",self.centroidal_model.param[13:19])
+        # print("eef value in state: ", state['end_effector_position'])
+        # print("external forces estimated in state: ", state['wrench_estimated'])
         # Set initial state constraint. We teleported the robot foothold
         # to the previous optimal foothold. This is done to avoid the optimization
         # of a foothold that is not considered at all at touchdown! In any case,
