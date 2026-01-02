@@ -52,7 +52,7 @@ USE_DLS_CONVENTION = False
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = True
+USE_PROCESS_SHARED_MEMORY_MPC = False
 
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
@@ -150,6 +150,7 @@ class Quadruped_PyMPC_Node(Node):
         self.external_wrenches = np.zeros(6)
 
         self.zmp = np.zeros(3)
+        self.arm_joint_pos0 = np.zeros(3)
 
         # Mujoco env
         self.env = QuadrupedEnv(
@@ -449,7 +450,8 @@ class Quadruped_PyMPC_Node(Node):
             exit(0)
 
     def get_arm_interface_callback(self, msg):
-        self.arm_joint_pos=np.array(msg.position, dtype=float).copy()
+        self.arm_joint_pos=np.array(msg.position[:3], dtype=float).copy()
+        self.arm_joint_pos0 = np.array(msg.position[3:], dtype=float).copy()
         self.arm_joint_vel=np.array(msg.velocity, dtype=float).copy()
         # print("arm joint pos callback:", self.arm_joint_pos)
 
@@ -493,21 +495,7 @@ class Quadruped_PyMPC_Node(Node):
         #             #arm states
         arm_joint_pos = self.arm_joint_pos.copy()
         arm_joint_vel = self.arm_joint_vel.copy()
-        #     # self.joint_positions[12:]= np.array([0.1,0.1,0.1])
-        #     # self.joint_velocities[12:]= np.array([0.3,0.3,0.3])
-        #     # print("shape joint pos:", self.joint_positions.shape)
-        #     # print("inside dls convention")
-        #     arm_joint_pos = self.arm_joint_pos.copy()*0
-        #     arm_joint_vel = self.arm_joint_vel.copy()*0
-        # else:
-        #     arm_joint_pos = copy.deepcopy(self.joint_positions[12:])  #arm states
-        #     arm_joint_pos[1] = - arm_joint_pos[1] -0.1  #fix convention
-        #     arm_joint_vel = copy.deepcopy(self.joint_velocities[12:])
-        # print("shape joint pos:", self.joint_positions.shape)
-
-
-        # self.env.mjData.qpos[7:] = copy.deepcopy(self.joint_positions)  #joint positions 
-        # self.env.mjData.qvel[6:] = copy.deepcopy(self.joint_velocities) #joint velocities
+        arm_joint_pos0 = self.arm_joint_pos0.copy()
 
         self.env.mjData.qpos[7:] = np.concatenate((copy.deepcopy(self.joint_positions[0:12]), arm_joint_pos), axis=0)  #joint positions
         self.env.mjData.qvel[6:] = np.concatenate((copy.deepcopy(self.joint_velocities[0:12]), arm_joint_vel), axis=0) #joint velocities
@@ -588,6 +576,7 @@ class Quadruped_PyMPC_Node(Node):
                                                 arm_joint_pos,
                                                 arm_joint_vel,
                                                 eef_pos,
+                                                arm_joint_pos0
                                                 
                                                 )
 
@@ -595,15 +584,6 @@ class Quadruped_PyMPC_Node(Node):
         # Console commands hacks
         ref_state["ref_position"][2] += self.console.height_delta
         ref_state["ref_orientation"][1] += self.console.pitch_delta
-
-        # print("REF CHECK FOR ARM")
-        # print("ref arm pos:", ref_state["ref_arm_position"])
-        # print("ref arm vel:", ref_state["ref_arm_velocity"])
-        # print("STATE CHECK FOR ARM")
-        # print("state arm pos:", state_current["arm_joint_pos"])
-        # print("state arm vel:", state_current["arm_joint_vel"])
-        # print("external_wrenches:", state_current['wrench_estimated'])
-
         
         # Publish to the MPC controller
         if(USE_THREADED_MPC):
@@ -741,6 +721,7 @@ class Quadruped_PyMPC_Node(Node):
 
         passive_arm_msg = PassiveArmState()
         passive_arm_msg.passive_arm_joint_position = np.concatenate([self.arm_joint_pos], axis=0).flatten()
+        passive_arm_msg.passive_arm_joint_position0 = np.concatenate([self.arm_joint_pos0], axis=0).flatten()
         passive_arm_msg.passive_arm_joint_velocity = np.concatenate([self.arm_joint_vel], axis=0).flatten()
         passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
         passive_arm_msg.passive_arm_eef_position = eef_pos
@@ -786,7 +767,7 @@ class Quadruped_PyMPC_Node(Node):
         # zmp_msg.contact =  self.contact_sequence
         # zmp_msg.nmpc_grfs = self.nmpc_GRFs
         self.publisher_zmp_msg.publish(zmp_msg)
-        print("mujoco eef pos:", eef_pos)
+        # print("mujoco eef pos:", eef_pos)
 
         
 

@@ -8,7 +8,7 @@ from sensor_msgs.msg import JointState
 import time
 import numpy as np
 np.set_printoptions(precision=3, suppress=True)
-
+from std_srvs.srv import Trigger
 
 # Gym and Simulation related imports
 import mujoco
@@ -36,7 +36,8 @@ class Simulator_Node(Node):
         self.publisher_arm_state = self.create_publisher(JointState, '/passive_arm_joint_states', 1)
         self.subscriber_control_signal = self.create_subscription(ControlSignal,"/quadruped_pympc_torques", self.get_torques_callback, 1)
         self.subscriber_trajectory_generator = self.create_subscription(TrajectoryGenerator,"/trajectory_generator", self.get_trajectory_generator_callback, 1)
-
+        # Service to set rest position arm (baseline)
+        self.srv = self.create_service(Trigger, 'set_rest_position', self.set_rest_service)
         self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_simulator_step_callback)
 
         # Timing stuff
@@ -44,7 +45,7 @@ class Simulator_Node(Node):
         self.last_start_time = None
         self.last_mpc_loop_time = 0.0
 
-
+        self.rest_position_arm = np.zeros(3)
         # Mujoco env
         self.env = QuadrupedEnv(
             robot=cfg.robot,
@@ -119,8 +120,13 @@ class Simulator_Node(Node):
         self.publisher_blind_state.publish(blind_state_msg)
 
         arm_state_msg = JointState()
-        arm_state_msg.position = self.env.mjData.qpos[19:].tolist()
+        arm_state_msg.header.stamp = self.get_clock().now().to_msg()
+        arm_state_msg.name = ['arm_joint1', 'arm_joint2', 'arm_joint3','arm_joint1_p0','arm_joint2_p0','arm_joint3_p0']
+        arm_joint_position = self.env.mjData.qpos[19:].tolist()
+        arm_rest_position = self.rest_position_arm.tolist()
+        arm_state_msg.position = arm_joint_position + arm_rest_position
         arm_state_msg.velocity = self.env.mjData.qvel[18:].tolist()
+        # arm_state_msg.position0 = self.rest_position_arm
         self.publisher_arm_state.publish(arm_state_msg)
 
 
@@ -129,6 +135,18 @@ class Simulator_Node(Node):
             self.env.render()
             self.last_render_time = time.time()
 
+
+    def set_rest_service(self, request, response):
+        """Update rest position to latest reading (values) only."""
+        if self.rest_position_arm is not None:
+            self.rest_position_arm = self.env.mjData.qpos[19:]
+            self.get_logger().info(f"Rest position updated to (counts): {self.rest_position_arm}")
+            response.success = True
+            response.message = "Rest position set successfully."
+        else:
+            response.success = False
+            response.message = "No encoder data available."
+        return response
 
 def main():
     print('Hello from the gym_quadruped simulator.')

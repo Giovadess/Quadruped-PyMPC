@@ -18,12 +18,13 @@ class Passive_Arm_Int(Node):
         # Service to set rest position (baseline)
         self.srv = self.create_service(Trigger, 'set_rest_position', self.set_rest_service)
         
-        self.joint_names = ['arm_joint1', 'arm_joint2', 'arm_joint3']
+        self.joint_names = ['arm_joint1', 'arm_joint2', 'arm_joint3','arm_join1_p0','arm_join2_p0','arm_join3_p0']
 
         # Serial connection to Arduino
         PORT = "/dev/ttyACM0"  # Change for your system
         BAUD = 115200
         self.publish_raw_velocity = False
+        self.rest_position_set = False
         try:
             self.ser = serial.Serial(PORT, BAUD, timeout=1)
         except Exception as e:
@@ -74,7 +75,7 @@ class Passive_Arm_Int(Node):
             return
 
         # Expect exactly 3 values (one per joint)
-        if len(values) != len(self.joint_names):
+        if len(values) != len(self.joint_names)/2:
             self.get_logger().warn(f"Expected {len(self.joint_names)} values, got {len(values)}: {line}")
             return
 
@@ -89,6 +90,8 @@ class Passive_Arm_Int(Node):
         # ---- Counts → radians (relative to rest) ----
         # position_rad = (rest - current) * (2π/CPR)
         pos_rad = [(c - r) * self.count_to_rad for c, r in zip(values, self.rest_position)]
+
+
 
         # ---- Build JointState ----
         now = self.get_clock().now()
@@ -138,6 +141,7 @@ class Passive_Arm_Int(Node):
         """Update rest position to latest reading (values) only."""
         if self.latest_counts is not None:
             self.rest_position = self.latest_counts[:]
+            self.rest_position_set = True
             self.get_logger().info(f"Rest position updated to (counts): {self.rest_position}")
             response.success = True
             response.message = "Rest position set successfully."
