@@ -49,6 +49,7 @@ class Passive_Arm_Int(Node):
         self.use_mavg = False
         self.min_dt = 1e-4                    # min dt for velocity calc
 
+        self.previous_velocity = None         # for low-pass filtering of velocity
         self.vel_hist = deque(maxlen=max(2, self.mavg_window))  # history for moving average
 
         period = 0.05  # 20 Hz
@@ -66,6 +67,9 @@ class Passive_Arm_Int(Node):
     def unwrap(self, theta, theta_ref):
         d = theta - theta_ref
         return theta_ref + ((d + math.pi) % (2*math.pi) - math.pi)
+    
+    def low_pass_filter(self, new_value, prev_value, alpha):
+        return alpha * new_value + (1 - alpha) * prev_value
 
     def timer_callback(self):
         """Reads encoder values from Arduino and publishes joint positions."""
@@ -145,6 +149,18 @@ class Passive_Arm_Int(Node):
         q_pos[0] = -q_pos[0]
         q_pos_rest[0] = -q_pos_rest[0]
 
+        ## Add a spike filter to avoid jumps due to unwrapping
+        for i in range(len(q_pos)):
+            if abs(q_pos[i] - q_pos_rest[i]) > math.pi:
+                q_pos[i] = q_pos_rest[i]
+
+        # Filtering to avoid jumps due to unwrapping
+
+        if self.prev_pos_rad is not None:
+            for i in range(len(q_pos)):
+                q_pos[i] = self.low_pass_filter(q_pos[i], self.prev_pos_rad[i], 0.5)
+
+
         # self.get_logger().info(f"raw: {values}  rest: {self.rest_position}  diff: {[v-r for v,r in zip(values, self.rest_position)]}")
 
 
@@ -165,29 +181,52 @@ class Passive_Arm_Int(Node):
                 v_raw = [(c - p) / dt for c, p in zip(q_pos, self.prev_pos_rad)]  # rad/s
 
                 v_filt = v_raw
+            ## filter velocity with low-pass to avoid jumps
+
+                if self.previous_velocity is None:
+                    self.previous_velocity = v_filt[:]
+                else:
+                    alpha = 0.3
+                    v_filt = [
+                        self.low_pass_filter(v, pv, alpha)
+                        for v, pv in zip(v_filt, self.previous_velocity)
+                    ]
+                    self.previous_velocity = v_filt[:]
+                
+                msg.velocity = v_filt 
                 # EMA
-                if self.use_ema:
-                    if self.vel_ema is None:
-                        self.vel_ema = v_raw[:]  # seed
-                    else:
-                        a = self.ema_alpha
-                        self.vel_ema = [a * n + (1.0 - a) * o for n, o in zip(v_raw, self.vel_ema)]
-                    v_filt = self.vel_ema
+                # if self.use_ema:
+                #     if self.vel_ema is None:
+                #         self.vel_ema = v_raw[:]  # seed
+                #     else:
+                #         a = self.ema_alpha
+                #         self.vel_ema = [a * n + (1.0 - a) * o for n, o in zip(v_raw, self.vel_ema)]
+                #     v_filt = self.vel_ema
 
-                # Moving average on top of EMA (optional)
-                if self.use_mavg and self.mavg_window >= 2:
-                    self.vel_hist.append(v_filt[:])
-                    n = len(self.vel_hist)
-                    accum = [0.0] * len(v_filt)
-                    for vec in self.vel_hist:
-                        for i, val in enumerate(vec):
-                            accum[i] += val
-                    v_filt = [s / n for s in accum]
+                # # Moving average on top of EMA (optional)
+                # if self.use_mavg and self.mavg_window >= 2:
+                #     self.vel_hist.append(v_filt[:])
+                #     n = len(self.vel_hist)
+                #     accum = [0.0] * len(v_filt)
+                #     for vec in self.vel_hist:
+                #         for i, val in enumerate(vec):
+                #             accum[i] += val
+                #     v_filt = [s / n for s in accum]
 
-                msg.velocity = v_filt  # rad/s
+                
         ### Compute and publish follower velocity
+        # ## Filter velocity with low-pass to avoid jumps
+        # if self.previous_velocity is None:
+        #     self.previous_velocity = msg.velocity[:]
+        # else:
+        #     alpha = 0.3
+        #     msg.velocity = [
+        #         self.low_pass_filter(v, pv, alpha)
+        #         for v, pv in zip(msg.velocity, self.previous_velocity)
+        #     ]
+        #     self.previous_velocity = msg.velocity[:]
         
-
+        
         # Publish
         self.joint_state_pub.publish(msg)
 
