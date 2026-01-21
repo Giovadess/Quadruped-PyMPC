@@ -33,7 +33,7 @@ class Simulator_Node(Node):
         # Subscribers and Publishers
         self.publisher_base_state = self.create_publisher(BaseState,"/base_state", 1)
         self.publisher_blind_state = self.create_publisher(BlindState,"/blind_state", 1)
-        self.publisher_arm_state_sim = self.create_publisher(JointState, '/passive_arm_joint_states_sim', 1)
+        self.publisher_arm_state = self.create_publisher(JointState, '/passive_arm_joint_states', 1)
         self.subscriber_control_signal = self.create_subscription(ControlSignal,"/quadruped_pympc_torques", self.get_torques_callback, 1)
         self.subscriber_trajectory_generator = self.create_subscription(TrajectoryGenerator,"/trajectory_generator", self.get_trajectory_generator_callback, 1)
         # Service to set rest position arm (baseline)
@@ -130,7 +130,7 @@ class Simulator_Node(Node):
         arm_state_msg.position = arm_joint_position + arm_rest_position
         arm_state_msg.velocity = self.env.mjData.qvel[18:].tolist()
         # arm_state_msg.position0 = self.rest_position_arm
-        self.publisher_arm_state_sim.publish(arm_state_msg)
+        self.publisher_arm_state.publish(arm_state_msg)
 
 
         # Render only at a certain frequency -----------------------------------------------------------------

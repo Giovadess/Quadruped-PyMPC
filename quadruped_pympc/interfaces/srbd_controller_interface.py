@@ -224,7 +224,7 @@ class SRBDControllerInterface:
                 
 
 
-                nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _ = self.controller.compute_control(
+                nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _, qp_time, niter = self.controller.compute_control(
                     state_current, ref_state, contact_sequence, external_wrenches=external_wrenches
                 )
 
@@ -232,7 +232,7 @@ class SRBDControllerInterface:
                 nmpc_joints_vel = None
                 nmpc_joints_acc = None
             else:
-                nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _ = self.controller.compute_control(
+                nmpc_GRFs, nmpc_footholds, nmpc_predicted_state, _, qp_time, niter = self.controller.compute_control(
                     state_current, ref_state, contact_sequence, inertia=inertia, external_wrenches=external_wrenches
                 )
 
@@ -262,6 +262,8 @@ class SRBDControllerInterface:
             nmpc_joints_acc,
             best_sample_freq,
             nmpc_predicted_state,
+            qp_time,
+            niter,
         )
 
     def compute_RTI(self):

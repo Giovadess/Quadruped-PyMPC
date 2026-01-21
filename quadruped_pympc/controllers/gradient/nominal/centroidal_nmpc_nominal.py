@@ -1448,6 +1448,10 @@ class Acados_NMPC_Nominal:
 
         else:
             status = self.acados_ocp_solver.solve()
+            # check how many iterations were used
+            niter = self.acados_ocp_solver.get_stats('qp_iter')
+            # save the qp time
+            qp_time = self.acados_ocp_solver.get_stats('time_qp')
             if self.verbose:
                 print("ocp time: ", self.acados_ocp_solver.get_stats('time_tot'))
 
@@ -1702,4 +1706,4 @@ class Acados_NMPC_Nominal:
         optimal_next_state[21:24] = optimal_foothold[3]
 
         # Return the optimal GRF, the optimal foothold, the next state and the status of the optimization
-        return optimal_GRF, optimal_foothold, optimal_next_state, status
+        return optimal_GRF, optimal_foothold, optimal_next_state, status , qp_time, niter

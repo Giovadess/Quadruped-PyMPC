@@ -66,7 +66,7 @@ if(USE_PROCESS_SHARED_MEMORY_MPC):
     # 72      : best_sample_freq (1)
     # 73      : last_mpc_loop_time (1)
     # 74      : stamp_mono (1)
-    N_DBL = 75
+    N_DBL = 79
     IDX_GRF   = slice(0, 12)
     IDX_FH    = slice(12, 24)
     IDX_JP    = slice(24, 36)
@@ -76,6 +76,8 @@ if(USE_PROCESS_SHARED_MEMORY_MPC):
     IDX_BSF   = 72
     IDX_LAST  = 73
     IDX_STAMP = 74
+    IDX_QPT   = 75
+    IDX_NITER = slice(76, 78)
 
     def legsattr_to12(legs: LegsAttr) -> np.ndarray:
         return np.concatenate([np.asarray(legs.FL).reshape(-1),
@@ -190,6 +192,9 @@ class Quadruped_PyMPC_Node(Node):
         self.contact_sequence = None
         self.inertia = None
         self.optimize_swing = None
+
+        self.qp_time = 0.0
+        self.niter = None
 
         # Torque vector
         self.tau = LegsAttr(*[np.zeros((self.env.mjModel.nv, 1)) for _ in range(4)])
@@ -352,7 +357,9 @@ class Quadruped_PyMPC_Node(Node):
                 nmpc_joints_vel, \
                 nmpc_joints_acc, \
                 best_sample_freq,\
-                nmpc_predicted_state = self.srbd_controller_interface.compute_control(state_current,
+                nmpc_predicted_state,\
+                qp_time,\
+                niter = self.srbd_controller_interface.compute_control(state_current,
                                                                         ref_state,
                                                                         contact_sequence,
                                                                         inertia,
@@ -374,6 +381,8 @@ class Quadruped_PyMPC_Node(Node):
                 arr[IDX_PRED] = np.asarray(nmpc_predicted_state).reshape(-1)[:12]
                 arr[IDX_BSF]  = float(best_sample_freq)
                 arr[IDX_LAST] = float(last_mpc_loop_time)
+                arr[IDX_QPT]  = float(qp_time)
+                arr[IDX_NITER]= np.asanyarray(niter)
                 arr[IDX_STAMP]= float(time.monotonic())
                 # mark stable
                 seq_out.value = (s | 1) + 1
@@ -640,7 +649,9 @@ class Quadruped_PyMPC_Node(Node):
                 self.nmpc_joints_vel, \
                 self.nmpc_joints_acc, \
                 self.best_sample_freq, \
-                self.nmpc_predicted_state = self.srbd_controller_interface.compute_control(state_current,
+                self.nmpc_predicted_state, \
+                self.qp_time, \
+                self.niter = self.srbd_controller_interface.compute_control(state_current,
                                                                         ref_state,
                                                                         contact_sequence,
                                                                         inertia,
@@ -718,6 +729,8 @@ class Quadruped_PyMPC_Node(Node):
         time_debug_msg = TimeDebug()
         time_debug_msg.time_wbc = self.loop_time
         time_debug_msg.time_mpc = self.last_mpc_loop_time
+        time_debug_msg.time_qp = self.qp_time
+        time_debug_msg.iter_qp = self.niter[1]
         self.publisher_time_debug.publish(time_debug_msg)
 
         passive_arm_msg = PassiveArmState()
