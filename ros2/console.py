@@ -56,6 +56,7 @@ class Console():
                         self.walking = True
                         self.controller_node.wb_interface.pgg.gait_type = self.controller_node.wb_interface.pgg.previous_gait_type
                         self.controller_node.wb_interface.pgg.reset()
+                        # self.controller_node.env._ref_base_lin_vel_H[0] += 0.05
                 
 
                 elif(input_string == "ooo"):

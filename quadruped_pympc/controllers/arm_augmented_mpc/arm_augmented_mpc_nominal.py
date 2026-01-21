@@ -61,7 +61,7 @@ class Arm_Augmented_MPC:
            self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json",build = True, generate = True)
  
         else :
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = True, generate = True)
+           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = False, generate = False)
         
         # Initialize solver
         for stage in range(self.horizon + 1):
@@ -257,25 +257,11 @@ class Arm_Augmented_MPC:
         #     external_wrenches_estimated_param = np.zeros((6,))
 
         if (self.use_static_stability):
+            #enter here only if static stability is used
             x = base_w[0]
             y = base_w[1]
-        else:
-            # Compute the ZMP
-            # # # # # robotHeight = base_w[2]
-            # # # # robotHeight = 0.35
-            # # # # foot_force_fl = self.centroidal_model.inputs[12:15]@self.centroidal_model.param[0]
-            # # # # foot_force_fr = self.centroidal_model.inputs[15:18]@self.centroidal_model.param[1]
-            # # # # foot_force_rl = self.centroidal_model.inputs[18:21]@self.centroidal_model.param[2]
-            # # # # foot_force_rr = self.centroidal_model.inputs[21:24]@self.centroidal_model.param[3]
-            # # # # temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
-            # # # # gravity = np.array([0, 0, -9.81])
-            # # # # linear_com_acc = (1 / self.centroidal_model.mass) @ temp + gravity
-            # # # # zmp = base_w[0:2] - linear_com_acc[0:2] * (robotHeight / (-gravity[2]))
-            # # # # # zmp = base_w[0:2] - base_vel_w[0:2]*(robotHeight/gravity[2])
-            # # # # zmp = h_R_w @ (zmp - base_w[0:2])
-            # # # # x = zmp[0]
-            # # # # y = zmp[1]
-
+        elif (self.use_zmp_stability):
+            #enter here only if zmp stability is used
 
             # collaborative edit
             # Compute the ZMP
@@ -309,6 +295,9 @@ class Arm_Augmented_MPC:
             zmp = h_R_w@(zmp - base_w[0:2])
             x = zmp[0]
             y = zmp[1]
+        else:
+            x = cs.SX.zeros(1)
+            y = cs.SX.zeros(1)
 
         y_FL = FL[1]
         y_FR = FR[1]
@@ -553,7 +542,7 @@ class Arm_Augmented_MPC:
         Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
         Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         # # ARM AUGMENTATION
-        Q_q_arm     = np.array([50,50,50])    # Arm position weights - all zero
+        Q_q_arm     = np.array([0.5,0.5,0.5])    # Arm position weights - all zero
         Q_q_dot_arm = np.array([0.5,0.5,0.5])
 
         Q_com_position_z_integral = np.array([50])  # integral of z_com
@@ -1452,6 +1441,16 @@ class Arm_Augmented_MPC:
         else:
             status = self.acados_ocp_solver.solve()
             # print("ocp time: ", self.acados_ocp_solver.get_stats('time_tot'))
+            # ## print number of iterations
+            # print("number of iterations: ", self.acados_ocp_solver.get_stats('qp_iter'))
+            # ## print tempo del qp
+            # print("time qp: ", self.acados_ocp_solver.get_stats('time_qp'))
+            # check how many iterations were used
+            niter = self.acados_ocp_solver.get_stats('qp_iter')
+            # save the qp time
+            qp_time = self.acados_ocp_solver.get_stats('time_qp')
+            
+
 
         # Take the solution
         control = self.acados_ocp_solver.get(0, "u")
@@ -1672,8 +1671,11 @@ class Arm_Augmented_MPC:
         # optimal_GRF[11] = reference_force_rr_z
         # Return the optimal GRF, the optimal foothold, the next state and the status of the optimization
         # Controller Frequency check+
-        time_end = time.time()
+        # time_end = time.time()
         # print("solving time: ", time_end - time_start)
         # print("Controller Frequency: ", 1 / (time_end - time_start))
-        return optimal_GRF, optimal_foothold, best_optimal_next_states, status
+        # print("Iterations: ", niter)
+        # print(" np iter type: ", type(niter))
+        # print("shape niter: ", np.shape(niter))
+        return optimal_GRF, optimal_foothold, optimal_next_state,status, qp_time, niter
 

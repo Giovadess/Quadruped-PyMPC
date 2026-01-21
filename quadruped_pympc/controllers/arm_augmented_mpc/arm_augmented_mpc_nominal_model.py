@@ -477,9 +477,10 @@ class Arm_Augmented_Centroidal_Model:
         # # external wrench in base frame
         tau_arm_B = b_R_w @ wrench_estimate_ang_base + cs.skew(p_eef - com_position) @ wrench_estimate_lin_base
 
-        temp  +=  - tau_base_arm[0:3] + wrench_estimate_lin_base
-        temp2 +=  - tau_base_arm[3:6] + wrench_estimate_ang_base +tau_arm_B #this is the torque that goes in the base frame
-
+        temp  +=  + tau_base_arm[0:3] #+ wrench_estimate_lin_base 
+        temp2 +=  + tau_base_arm[3:6] #+ wrench_estimate_ang_base #+tau_arm_B #this is the torque that goes in the base frame
+        # temp  = temp + external_wrench_linear
+        # temp2 = temp2 + external_wrench_angular  
         # # # set arm to zero
         ### setting this made the system at least stand up
         # q_ddot_arm = cs.SX.zeros(3,1) #arm acceleration is zero for now

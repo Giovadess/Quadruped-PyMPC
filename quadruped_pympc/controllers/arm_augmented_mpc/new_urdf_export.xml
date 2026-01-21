@@ -205,7 +205,7 @@
       <body name="leader/pa_link_1_ext" pos="0.0498 0 0.034">
             <!-- <inertial pos="0.0909 0 0.0923" quat="0.707051 0.0451246 -0.0453544 0.704263" mass="0.554" diaginertia="0.00488868 0.00457 0.00135132"/> -->
             <inertial pos="0.08 0.0 0.12" quat ="0.9238983141513943 0.0 0.3826380863272911 0.0" mass="0.5" diaginertia="0.00457 0.003831 0.001409" />
-            <joint name="leader/arm_link_2_joint" pos="0.01 0 0.0" axis="0 1 0" limited="false" range="0 1" stiffness="5" damping="0.5"/>
+            <joint name="leader/arm_link_2_joint" pos="0.01 0 0.0" axis="0 1 0" limited="false" range="0 1" stiffness="8" damping="0.5"/>
             
             <!-- Visual Mesh -->
             <geom quat="1 0 0 0" type="mesh" class="leader/visual_arm"  contype="0" conaffinity="0"  rgba="0 0 0 1" mesh="leader/arm_link_2" />

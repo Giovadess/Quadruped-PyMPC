@@ -18,7 +18,8 @@ class Passive_Arm_Int(Node):
         # Service to set rest position (baseline)
         self.srv = self.create_service(Trigger, 'set_rest_position', self.set_rest_service)
         
-        self.joint_names = ['arm_joint1', 'arm_joint2', 'arm_joint3','arm_join1_p0','arm_join2_p0','arm_join3_p0']
+        self.joint_names = ['arm_joint1', 'arm_joint2', 'arm_joint3','arm_joint1_p0','arm_joint2_p0','arm_joint3_p0']
+        
 
         # Serial connection to Arduino
         PORT = "/dev/ttyACM0"  # Change for your system
@@ -35,6 +36,8 @@ class Passive_Arm_Int(Node):
         self.rest_position = None             # baseline counts set on first read / service
         self.latest_counts = None             # latest raw counts from serial
 
+        self.start_position =   None             # initial position at startup (counts)
+
         self.prev_pos_rad = None              # previous positions (radians)
         self.prev_time_ns = None
 
@@ -49,10 +52,8 @@ class Passive_Arm_Int(Node):
         self.vel_hist = deque(maxlen=max(2, self.mavg_window))  # history for moving average
 
         period = 0.05  # 20 Hz
-        self.counts_per_rev = 1            # encoder counts per revolution (10-bit)
+        self.counts_per_rev = 1024            # encoder counts per revolution (10-bit)
         self.count_to_rad = (2.0 * math.pi) / self.counts_per_rev  # counts -> radians
-        self.count_to_rad= 1
-
 
         # ---------------- Loop ----------------
         self.timer = self.create_timer(period, self.timer_callback)
@@ -61,6 +62,10 @@ class Passive_Arm_Int(Node):
             f"counts_per_rev={self.counts_per_rev}, EMA={self.use_ema} (alpha={self.ema_alpha}), "
             f"MAVG={self.use_mavg} (win={self.mavg_window})."
         )
+
+    def unwrap(self, theta, theta_ref):
+        d = theta - theta_ref
+        return theta_ref + ((d + math.pi) % (2*math.pi) - math.pi)
 
     def timer_callback(self):
         """Reads encoder values from Arduino and publishes joint positions."""
@@ -82,29 +87,82 @@ class Passive_Arm_Int(Node):
         self.latest_counts = values
 
         # First time: set rest baseline and wait for next sample to compute velocity
-        if self.rest_position is None:
+        if self.start_position is None:
+            self.start_position = values[:]
+            self.get_logger().info(f"Initial rest position (counts) set to: {self.start_position}")
+            ## At this first call also set the rest position
             self.rest_position = values[:]
-            self.get_logger().info(f"Initial rest position (counts) set to: {self.rest_position}")
+            self.get_logger().info(f"Rest position (counts) set to: {self.rest_position}")
             return
+        
+
 
         # ---- Counts → radians (relative to rest) ----
         # position_rad = (rest - current) * (2π/CPR)
-        pos_rad = [(c - r) * self.count_to_rad for c, r in zip(values, self.rest_position)]
+        # pos_rad = [(c - r) * self.count_to_rad for c, r in zip(values, self.rest_position)]
 
+        ###
+
+        # pos_rad =      [c * self.count_to_rad for c in values]
+        # pos_rest_rad = [r * self.count_to_rad for r in self.rest_position]
+
+        # curr_pos = [ c-r for c,r in zip(pos_rad,pos_rest_rad)]
+
+        ## Save the initial position (not rest but the actual position at startup)
+        ## the joint position is computed as the difference between the current position and the start position
+        ## its already given in radians
+        # q_pos = [c for c in values]
+        # q_pos_rest = [r for r in self.start_position]
+
+
+        theta_raw   = values
+        theta_start = self.start_position
+        theta_rest  = self.rest_position
+
+        # theta_cont = [
+        #     t0 + ((t - t0 + math.pi) % (2*math.pi) - math.pi)
+        #     for t, t0 in zip(theta_raw, theta_start)
+        # ]
+
+        # q_pos_rest = [tc - tr for tc, tr in zip(theta_cont, theta_rest)]
+        # q_pos = [tc - ts for tc, ts in zip(theta_cont, theta_start)]
+
+
+
+        theta_cont = [
+            self.unwrap(t, ts)
+            for t, ts in zip(theta_raw, theta_start)
+        ]
+
+        theta_rest_cont = [
+            self.unwrap(tr, ts)
+            for tr, ts in zip(theta_rest, theta_start)
+        ]
+
+        q_pos      = [tc - ts for tc, ts in zip(theta_cont, theta_start)]
+        q_pos_rest = [trc - ts for trc, ts in zip(theta_rest_cont, theta_start)]
+        
+        q_pos[0] = -q_pos[0]
+        q_pos_rest[0] = -q_pos_rest[0]
+
+        # self.get_logger().info(f"raw: {values}  rest: {self.rest_position}  diff: {[v-r for v,r in zip(values, self.rest_position)]}")
 
 
         # ---- Build JointState ----
         now = self.get_clock().now()
         msg = JointState()
         msg.header.stamp = now.to_msg()
-        msg.name = self.joint_names
-        msg.position = pos_rad
+        msg.name = ['arm_joint1', 'arm_joint2', 'arm_joint3','arm_joint1_p0','arm_joint2_p0','arm_joint3_p0']
+
+        # msg.position = curr_pos + pos_rest_rad  # radians
+
+        msg.position = q_pos + q_pos_rest  # radians
 
         # ---- Velocity (finite difference → filters) ----
         if self.prev_pos_rad is not None and self.prev_time_ns is not None:
             dt = (now.nanoseconds - self.prev_time_ns) / 1e9
             if dt >= self.min_dt:
-                v_raw = [(c - p) / dt for c, p in zip(pos_rad, self.prev_pos_rad)]  # rad/s
+                v_raw = [(c - p) / dt for c, p in zip(q_pos, self.prev_pos_rad)]  # rad/s
 
                 v_filt = v_raw
                 # EMA
@@ -134,7 +192,7 @@ class Passive_Arm_Int(Node):
         self.joint_state_pub.publish(msg)
 
         # Update state for next tick
-        self.prev_pos_rad = pos_rad[:]
+        self.prev_pos_rad = q_pos[:]
         self.prev_time_ns = now.nanoseconds
 
     def set_rest_service(self, request, response):

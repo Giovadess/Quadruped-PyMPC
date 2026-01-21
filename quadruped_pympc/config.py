@@ -190,7 +190,7 @@ mpc_params = {
     'shift_solution':                          False,
 
     # 'arm_spring_gains':                       np.array([3.5,22, 33]),
-    'arm_spring_gains':                       np.array([5, 5, 5]), 
+    'arm_spring_gains':                       np.array([5, 8, 5]), 
     'arm_damping_gains':                      np.array([0.5,0.5, 0.5]),
 
     # ----- END properties for the sampling-based mpc -----

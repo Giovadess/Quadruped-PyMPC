@@ -42,17 +42,17 @@ os.system("sudo echo -20 > /proc/" + str(pid) + "/autogroup")
 #GRUB_CMDLINE_LINUX_DEFAULT="quiet splash isolcpus=4-5" in etc/default/grub
 # and then sudo update-grub
 # and uncomment the line below
-# affinity_mask = {4, 5} 
-# os.sched_setaffinity(pid, affinity_mask)
+affinity_mask = {4, 5} 
+os.sched_setaffinity(pid, affinity_mask)
 
 #for real time, launch it with chrt -r 99 python3 run_controller.py
 
 
-USE_DLS_CONVENTION = False
+USE_DLS_CONVENTION = True
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = False
+USE_PROCESS_SHARED_MEMORY_MPC = True
 
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
@@ -479,7 +479,8 @@ class Quadruped_PyMPC_Node(Node):
 
         
         # Update the mujoco model
-        self.env.mjData.qpos[0:3] = copy.deepcopy(self.position)
+        self.env.mjData.qpos[0:3] = copy.deepcopy(self.position)  # s.e. height
+        # # # self.env.mjData.qpos[0:3] = np.zeros(3) # proprioceptive height
         #self.env.mjData.qpos[0:2] = copy.deepcopy(self.position[0:2])
         #self.env.mjData.qpos[2] = copy.deepcopy(self.wb_interface.terrain_computation.terrain_height) # Proprioceptive height estimation
         self.env.mjData.qpos[3:7] = copy.deepcopy(self.orientation) #robot orientation

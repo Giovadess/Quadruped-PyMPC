@@ -33,7 +33,7 @@ class Simulator_Node(Node):
         # Subscribers and Publishers
         self.publisher_base_state = self.create_publisher(BaseState,"/base_state", 1)
         self.publisher_blind_state = self.create_publisher(BlindState,"/blind_state", 1)
-        self.publisher_arm_state = self.create_publisher(JointState, '/passive_arm_joint_states', 1)
+        self.publisher_arm_state_sim = self.create_publisher(JointState, '/passive_arm_joint_states_sim', 1)
         self.subscriber_control_signal = self.create_subscription(ControlSignal,"/quadruped_pympc_torques", self.get_torques_callback, 1)
         self.subscriber_trajectory_generator = self.create_subscription(TrajectoryGenerator,"/trajectory_generator", self.get_trajectory_generator_callback, 1)
         # Service to set rest position arm (baseline)
@@ -123,11 +123,14 @@ class Simulator_Node(Node):
         arm_state_msg.header.stamp = self.get_clock().now().to_msg()
         arm_state_msg.name = ['arm_joint1', 'arm_joint2', 'arm_joint3','arm_joint1_p0','arm_joint2_p0','arm_joint3_p0']
         arm_joint_position = self.env.mjData.qpos[19:].tolist()
+        # I need to switch the sogn of joint 2 and 3 to match the real robot convention
+        # arm_joint_position[1] = -arm_joint_position[1]
+        # arm_joint_position[2] = -arm_joint_position[2]
         arm_rest_position = self.rest_position_arm.tolist()
         arm_state_msg.position = arm_joint_position + arm_rest_position
         arm_state_msg.velocity = self.env.mjData.qvel[18:].tolist()
         # arm_state_msg.position0 = self.rest_position_arm
-        self.publisher_arm_state.publish(arm_state_msg)
+        self.publisher_arm_state_sim.publish(arm_state_msg)
 
 
         # Render only at a certain frequency -----------------------------------------------------------------
@@ -139,7 +142,10 @@ class Simulator_Node(Node):
     def set_rest_service(self, request, response):
         """Update rest position to latest reading (values) only."""
         if self.rest_position_arm is not None:
-            self.rest_position_arm = self.env.mjData.qpos[19:]
+            # self.rest_position_arm = self.env.mjData.qpos[19:]
+            self.rest_position_arm = np.array(self.env.mjData.qpos[19:22], dtype=float)
+            # self.rest_position_arm[1] = -self.rest_position_arm[1]
+            # self.rest_position_arm[2] = -self.rest_position_arm[2]
             self.get_logger().info(f"Rest position updated to (counts): {self.rest_position_arm}")
             response.success = True
             response.message = "Rest position set successfully."
