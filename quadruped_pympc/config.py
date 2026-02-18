@@ -82,8 +82,8 @@ mpc_params = {
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon':                                 20,
-    'dt':                                      0.04,
+    'horizon':                                 25,
+    'dt':                                      0.02,
 
     # in my mujoco simulation
     # 'horizon':                                 25,
@@ -94,7 +94,7 @@ mpc_params = {
     'mu':                                      0.5,
 
     # this is used to have a smaller dt near the start of the horizon
-    'use_nonuniform_discretization':           True,
+    'use_nonuniform_discretization':           False,
     'horizon_fine_grained':                    2,
     'dt_fine_grained':                         0.02,
 
@@ -140,7 +140,7 @@ mpc_params = {
     'num_qp_iterations':                       1,
 
     # this is used to speeding up or robustify acados' solver (hpipm).
-    'solver_mode':                             'balance',  # balance, robust, speed, crazy_speed
+    'solver_mode':                             'crazy_speed',  # balance, robust, speed, crazy_speed
 
 
     # these is used only for the case 'input_rates', using as GRF not the actual state
@@ -153,7 +153,7 @@ mpc_params = {
     'use_zmp_stability':                       True,
     'trot_stability_margin':                   0.04,
     'pace_stability_margin':                   0.1,
-    'crawl_stability_margin':                  0.04,  # in general, 0.02 is a good value
+    'crawl_stability_margin':                  0.02,  # in general, 0.02 is a good value
 
     # this is used to compensate for the external wrenches
     # you should provide explicitly this value in compute_control
@@ -214,7 +214,8 @@ simulation_params = {
 
     'gait':                        'crawl',  # 'trot', 'pace', 'crawl', 'bound', 'full_stance'
     'gait_params':                 {'trot': {'step_freq': 1.4, 'duty_factor': 0.65, 'type': GaitType.TROT.value},
-                                    'crawl': {'step_freq': 0.4, 'duty_factor': 0.78, 'type': GaitType.BACKDIAGONALCRAWL.value},
+                                    # 'crawl': {'step_freq': 0.55, 'duty_factor': 0.78, 'type': GaitType.BACKDIAGONALCRAWL.value},
+                                    'crawl': {'step_freq': 0.55, 'duty_factor': 0.78, 'type': GaitType.BACKDIAGONALCRAWL.value},
                                     'pace': {'step_freq': 1.4, 'duty_factor': 0.7, 'type': GaitType.PACE.value},
                                     'bound': {'step_freq': 1.8, 'duty_factor': 0.65, 'type': GaitType.BOUNDING.value},
                                     'full_stance': {'step_freq': 2, 'duty_factor': 0.65, 'type': GaitType.FULL_STANCE.value},

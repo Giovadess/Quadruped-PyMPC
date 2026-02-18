@@ -1,6 +1,8 @@
 # Description: This file contains the class for the NMPC controller
 import pathlib
 
+from quadruped_pympc.acados.interfaces.acados_template.acados_template import acados_ocp_solver
+
 # Authors: Giulio Turrisi - 
 
 from acados_template import AcadosOcp, AcadosOcpSolver
@@ -47,6 +49,8 @@ class Arm_Augmented_MPC:
         self.states_dim = acados_model.x.size()[0]
         self.inputs_dim = acados_model.u.size()[0]
 
+        self.yref_save = np.zeros((self.horizon + 1, self.states_dim + self.inputs_dim))
+
         # Create the acados ocp solver
         self.ocp = self.create_ocp_solver_description(acados_model)
 
@@ -61,7 +65,7 @@ class Arm_Augmented_MPC:
            self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json",build = True, generate = True)
  
         else :
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = False, generate = False)
+           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = True, generate = True)
         
         # Initialize solver
         for stage in range(self.horizon + 1):
@@ -123,6 +127,7 @@ class Arm_Augmented_MPC:
         ocp.constraints.lh_0 = self.constr_lh_friction
         nsh = expr_h_friction.shape[0]
         nsh_state_constraint_start = copy.copy(nsh)
+        print("shape friction constr: ", expr_h_friction.shape)
 
         if (self.use_foothold_constraints):
             expr_h_foot, \
@@ -140,6 +145,7 @@ class Arm_Augmented_MPC:
             expr_h_support_polygon, \
                 self.constr_uh_support_polygon, \
                 self.constr_lh_support_polygon = self.create_stability_constraints()
+            print("shape stability constr: ", expr_h_support_polygon.shape)
 
             ocp.model.con_h_expr = cs.vertcat(ocp.model.con_h_expr, expr_h_support_polygon)
             ocp.constraints.uh = np.concatenate((ocp.constraints.uh, self.constr_uh_support_polygon))
@@ -148,6 +154,7 @@ class Arm_Augmented_MPC:
             self.nsh_stability_end = copy.copy(nsh)
 
         nsh_state_constraint_end = copy.copy(nsh)
+
 
         # Set slack variable configuration:
         num_state_cstr = nsh_state_constraint_end - nsh_state_constraint_start
@@ -164,12 +171,12 @@ class Arm_Augmented_MPC:
             ocp.cost.zu = 1000 * np.ones((ns,))
             ocp.cost.Zu = 1 * np.ones((ns,))
 
-            # Variables to save the upper and lower bound of the constraints applied
+        # Variables to save the upper and lower bound of the constraints applied
         list_upper_bound = []
         list_lower_bound = []
         for j in range(self.horizon):
-            list_upper_bound.append(np.zeros((nsh,)))
-            list_lower_bound.append(np.zeros((nsh,)))
+            list_upper_bound.append(np.zeros((6,)))
+            list_lower_bound.append(np.zeros((6,)))
         self.upper_bound = np.array(list_upper_bound, dtype=object)
         self.lower_bound = np.array(list_lower_bound, dtype=object)
 
@@ -184,7 +191,7 @@ class Arm_Augmented_MPC:
         init_base_position = np.array([0, 0, 0])
         init_base_yaw = np.array([0])
         init_external_wrench = np.array([0, 0, 0, 0, 0, 0])
-        init_k = np.array([15,15,15])
+        init_k = np.array([5,8,5])
         init_d = np.array([0.5, 0.5, 0.5])
         init_rest_pos_arm = np.array([0,0,0])
         init_eef_position = np.array([0,0,0])
@@ -212,14 +219,15 @@ class Arm_Augmented_MPC:
             ocp.solver_options.qp_solver_iter_max = 10
             ocp.solver_options.hpipm_mode = "SPEED"
         elif (config.mpc_params['solver_mode'] == "crazy_speed"):
-            ocp.solver_options.qp_solver_iter_max = 5
+            ocp.solver_options.qp_solver_iter_max = 20
             ocp.solver_options.hpipm_mode = "SPEED_ABS"
 
         # ocp.solver_options.line_search_use_sufficient_descent = 1
         # ocp.solver_options.regularize_method = "PROJECT_REDUC_HESS"
         # ocp.solver_options.nlp_solver_ext_qp_res = 1
         ocp.solver_options.levenberg_marquardt = 1e-3
-
+        ocp.solver_options.ext_fun_compile_flags = '-O3'
+        ocp.solver_options.qp_solver_warm_start = 2
         # Set prediction horizon
         ocp.solver_options.tf = self.T_horizon
 
@@ -255,7 +263,7 @@ class Arm_Augmented_MPC:
         #     external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
         # else:
         #     external_wrenches_estimated_param = np.zeros((6,))
-
+        ####### use_stability_constraints
         if (self.use_static_stability):
             #enter here only if static stability is used
             x = base_w[0]
@@ -267,30 +275,41 @@ class Arm_Augmented_MPC:
             # Compute the ZMP
             # robotHeight = base_w[2]
             robotHeight = 0.35
-            foot_force_fl = self.centroidal_model.inputs[12:15]@self.centroidal_model.param[0]
-            foot_force_fr = self.centroidal_model.inputs[15:18]@self.centroidal_model.param[1]
-            foot_force_rl = self.centroidal_model.inputs[18:21]@self.centroidal_model.param[2]
-            foot_force_rr = self.centroidal_model.inputs[21:24]@self.centroidal_model.param[3]
+            mass = 25.523
+            foot_force_fl = self.centroidal_model.inputs[12:15] * self.centroidal_model.param[0]
+            foot_force_fr = self.centroidal_model.inputs[15:18] * self.centroidal_model.param[1]
+            foot_force_rl = self.centroidal_model.inputs[18:21] * self.centroidal_model.param[2]
+            foot_force_rr = self.centroidal_model.inputs[21:24] * self.centroidal_model.param[3]
             temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
             
             gravity = np.array([0, 0, -9.81])
-            linear_com_acc = (1/self.centroidal_model.mass)@temp + gravity 
-            zmp = base_w[0:2] - linear_com_acc[0:2]*(robotHeight/(-gravity[2]))
+            linear_com_acc = (1/mass)@temp + gravity 
+            # zmp = base_w[0:2] - linear_com_acc[0:2]*(robotHeight/(-gravity[2]))
 
 
-            external_forces_linear = self.centroidal_model.param[13:19] #state?? #this is not correct, should be parameter!!
+            external_forces_linear = self.centroidal_model.param[13:16] #state?? #this is not correct, should be parameter!!
             
             end_effector_position = self.centroidal_model.param[28:31]
             # end_effector_position = self.centroidal_model.param[19:22]
             # print("eef pos param in zmp constr: ",end_effector_position)
             # print("external forces param in zmp constr: ",external_forces_linear)
 
-            zmp_x = self.centroidal_model.mass*-gravity[2]*base_w[0] - base_w[2]*self.centroidal_model.mass*linear_com_acc[0]
+            ## Vertical force component
+            gravity_force = mass * -gravity[2] # ~250N
+            total_vertical_force = gravity_force + external_forces_linear[2]
+            safe_vertical_force = cs.fmax(total_vertical_force, 10.0)
+
+            zmp_x = mass*-gravity[2]*base_w[0] - robotHeight*mass*linear_com_acc[0]
+            
             zmp_x = zmp_x + end_effector_position[0]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[0]
-            zmp_x = zmp_x/(self.centroidal_model.mass*-gravity[2] +external_forces_linear[2])            
-            zmp_y = self.centroidal_model.mass*-gravity[2]*base_w[1] - base_w[2]*self.centroidal_model.mass*linear_com_acc[1]
+
+            zmp_x = zmp_x/safe_vertical_force
+
+            zmp_y = mass*-gravity[2]*base_w[1] - robotHeight*mass*linear_com_acc[1]
             zmp_y = zmp_y + end_effector_position[1]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[1]
-            zmp_y = zmp_y/(self.centroidal_model.mass*-gravity[2] +external_forces_linear[2])
+            zmp_y = zmp_y/safe_vertical_force
+
+            # transform zmp to the horizontal frame
             zmp = cs.vertcat(zmp_x, zmp_y)
             zmp = h_R_w@(zmp - base_w[0:2])
             x = zmp[0]
@@ -367,23 +386,6 @@ class Arm_Augmented_MPC:
                           self.centroidal_model.stanceFL, self.centroidal_model.stanceFR,
                           self.centroidal_model.stanceRL, self.centroidal_model.stanceRR)
         constraint_FL_FR_jac = cs.jacobian(constraint_FL_FR, temp)
-        # self.constraint_FL_FR_jac_fun = cs.Function('constraint_FL_FR_jac_fun', [temp], [constraint_FL_FR_jac])
-
-        # constraint_FR_RR_jac = cs.jacobian(constraint_FR_RR, temp)
-        # self.constraint_FR_RR_jac_fun = cs.Function('constraint_FR_RR_jac_fun', [temp], [constraint_FR_RR_jac])
-
-        # constraint_RR_RL_jac = cs.jacobian(constraint_RR_RL, temp)
-        # self.constraint_RR_RL_jac_fun = cs.Function('constraint_RR_RL_jac_fun', [temp], [constraint_RR_RL_jac])
-
-        # constraint_RL_FL_jac = cs.jacobian(constraint_RL_FL, temp)
-        # self.constraint_RL_FL_jac_fun = cs.Function('constraint_RL_FL_jac_fun', [temp], [constraint_RL_FL_jac])
-
-        # constraint_FL_RR_jac = cs.jacobian(constraint_FL_RR, temp)
-        # self.constraint_FL_RR_jac_fun = cs.Function('constraint_FL_RR_jac_fun', [temp], [constraint_FL_RR_jac])
-
-        # constraint_FR_RL_jac = cs.jacobian(constraint_FR_RL, temp)
-        # self.constraint_FR_RL_jac_fun = cs.Function('constraint_FR_RL_jac_fun', [temp], [constraint_FR_RL_jac])
-
         return Jb, ub, lb
 
     # Create a standard foothold box constraint
@@ -561,7 +563,7 @@ class Arm_Augmented_MPC:
             R_foot_force = np.array(
                 [0.00001, 0.00001, 0.00001])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         else:
-            R_foot_force = np.array([0.001, 0.001, 0.001]) # increase this?'
+            R_foot_force = np.array([0.022, 0.02, 0.02]) # increase this?'
 
         Q_mat = np.diag(np.concatenate((Q_position, Q_velocity,
                                         Q_base_angle, Q_base_angle_rates,
@@ -919,27 +921,15 @@ class Arm_Augmented_MPC:
 
                     elif (np.array_equal(FL_contact_sequence, RR_contact_sequence)
                           and np.array_equal(FR_contact_sequence, RL_contact_sequence)):
-                        # TROT
+                        # TROT -> Disable the constraint that are not needed
                         stability_margin = config.mpc_params['trot_stability_margin']
                         if (FL_contact_sequence[j] == 1 and FR_contact_sequence[j] == 0):
-                            ub_support_FL_RR = 0 + stability_margin
-                            lb_support_FL_RR = 0 - stability_margin
+                            ub_support_FL_RR = ACADOS_INFTY
+                            lb_support_FL_RR = - ACADOS_INFTY
 
                         if (FR_contact_sequence[j] == 1 and FL_contact_sequence[j] == 0):
-                            ub_support_FR_RL = 0 + stability_margin
-                            lb_support_FR_RL = 0 - stability_margin
-
-                    elif (np.array_equal(FL_contact_sequence, RL_contact_sequence)
-                          and np.array_equal(FR_contact_sequence, RR_contact_sequence)):
-                        # PACE
-                        stability_margin = config.mpc_params['pace_stability_margin']
-                        if (FL_contact_sequence[j] == 1 and FR_contact_sequence[j] == 0):
-                            ub_support_RL_FL = 0 + stability_margin
-                            lb_support_RL_FL = 0 - stability_margin
-
-                        if (FR_contact_sequence[j] == 1 and FL_contact_sequence[j] == 0):
-                            ub_support_FR_RR = 0 + stability_margin
-                            lb_support_FR_RR = 0 - stability_margin
+                            ub_support_FR_RL = ACADOS_INFTY
+                            lb_support_FR_RL = - ACADOS_INFTY
 
                     else:
                         # CRAWL BACKDIAGONALCRAWL ONLY
@@ -1010,8 +1000,8 @@ class Arm_Augmented_MPC:
                     self.acados_ocp_solver.constraints_set(j, "lh", lb_total)
 
                 # save the constraint for logging
-                self.upper_bound[j] = ub_total.tolist()
-                self.lower_bound[j] = lb_total.tolist()
+                self.upper_bound[j] = ub_total[20:].tolist()
+                self.lower_bound[j] = lb_total[20:].tolist()
 
                 # ugly procedure to update the idx of the constraint
                 if (j >= 1):
@@ -1233,7 +1223,9 @@ class Arm_Augmented_MPC:
                 yref_tot = np.concatenate((yref, np.zeros(num_l2_penalties, )))
                 self.acados_ocp_solver.set(j, "yref", yref_tot)
             else:
+
                 self.acados_ocp_solver.set(j, "yref", yref)
+                self.yref_save[j, :] = yref
 
         # Fill last step horizon reference (self.states_dim - no control action!!)
         yref_N = np.zeros(shape=(self.states_dim,))
@@ -1258,6 +1250,8 @@ class Arm_Augmented_MPC:
         # (stance proximity will disable foothold optimization near a stance!!)
         mu = config.mpc_params['mu']
         yaw = state["orientation"][2]
+
+        
 
         # Stance Proximity ugly routine. Basically we disable foothold optimization
         # in the proximity of a stance phase (the real foot cannot travel too fast in
@@ -1422,6 +1416,7 @@ class Arm_Augmented_MPC:
             self.set_warm_start(state_acados, reference, 
                                 FL_contact_sequence, FR_contact_sequence, RL_contact_sequence,
                                 RR_contact_sequence)
+            
 
         # Set stage constraint
         h_R_w = np.array([np.cos(yaw), np.sin(yaw),
@@ -1646,20 +1641,78 @@ class Arm_Augmented_MPC:
         optimal_foothold[2] = optimal_foothold[2] + self.initial_base_position
         optimal_foothold[3] = optimal_foothold[3] + self.initial_base_position
 
-        optimal_next_state[0:3] = optimal_next_state[0:3] + self.initial_base_position
+        optimal_next_state[0:3]   = optimal_next_state[0:3] + self.initial_base_position
         optimal_next_state[12:15] = optimal_foothold[0]
         optimal_next_state[15:18] = optimal_foothold[1]
         optimal_next_state[18:21] = optimal_foothold[2]
         optimal_next_state[21:24] = optimal_foothold[3]
-        best_optimal_next_states = []
+        next_state_i = []
+        control_i = []
         for i in range(self.horizon + 1):
-            best_optimal_next_state_i= self.acados_ocp_solver.get(i, "x")
-            best_optimal_next_state_i[0:3] += self.initial_base_position
-            best_optimal_next_state_i[12:24] = optimal_GRF
+            ## get optimal next state at step i
+            next_state_i= self.acados_ocp_solver.get(i, "x")
+
+            ## get optimal inputs at step i
+            control_i = self.acados_ocp_solver.get(i, "u")
+
+            sl_i = self.acados_ocp_solver.get(i, "sl")
+            su_i = self.acados_ocp_solver.get(i, "su")
+
+            t = config.mpc_params['dt']
+
+            ##get upper and lower bounds
+            # self.acados_ocp_solver.constraints_set(j, "uh", ub_total)
+            # ineq_i=self.acados_ocp_solver.get(i, "lam")
+
+            # constr_uh = self.acados_ocp_solver.constraints_get(i, "uh")
+            # constr_ubu = self.acados_ocp_solver.constraints_get(i, "ubu")
+        # # constr_ug = self.acados_ocp_solver.constraints_get(0, "uh")
+        # print("nh:", self.ocp.dims.nh)
+        # print("self.upper_bound[0] ", self.upper_bound[0])
+        # print("self.lower_bound[0] ", self.lower_bound[0])
+
+        # h0 = self.acados_ocp_solver.get(0, "h")
+        # print("Initial number of constraints: ", h0.shape)
+        # Predict ZMP and sumFz
+        step_log = {
+            "k": 25, #horizon length
+            "t": t,  # time step
+            "x_pred": [self.acados_ocp_solver.get(i, "x").tolist()
+                       for i in range(self.horizon + 1)], # predicted states
+            "u_pred": [self.acados_ocp_solver.get(i, "u").tolist()
+               for i in range(self.horizon)], # predicted inputs
+            "sl_i": sl_i, #lower slack
+            "su_i": su_i, #upper slack
+            "solver_status": status, # acados solver status
+            "qp_time": qp_time, # time spent in qp solver
+            "niter": niter[1], # number of iterations of the qp solver
+            "state_current": state_acados.flatten().tolist(),
+            "upper_bound": self.upper_bound.tolist(), #upper bound for the constraints
+            "lower_bound": self.lower_bound.tolist(),    #lower bound for the constraints
+            ## add references
+            "yref": self.yref_save,
+            "contact_sequence": contact_sequence,
+            # "ineq_i": ineq_i.tolist(), #  inequalities [ lbu lbx lg lh lphi ubu ubx ug uh uphi; lsbu lsbx lsg lsh lsphi usbu usbx usg ush usphi]
+        }
+        # print("ub_i: ", ineq_i) # this is empty!! 
+        # print("constr uh: ", constr_uh) # this is empty!!
+        # print("constr ubu: ", constr_ubu) # this is empty!!
+        # print("constr ug: ", constr_ug) # this is empty!!
+
+        ## print a bunch of things
+        ## print acados state
+        # print(self.acados_ocp_solver.state_acados)
+        # breakpoint()
+            # best_optimal_next_state_i[0:3] += self.initial_base_position
+            # best_optimal_next_state_i[12:24] = optimal_GRF
+            
             # best_optimal_next_state_i[15:18] = optimal_foothold[1]
             # best_optimal_next_state_i[18:21] = optimal_foothold[2]
             # best_optimal_next_state_i[21:24] = optimal_foothold[3]
-            best_optimal_next_states.append(best_optimal_next_state_i)
+            ### Arm joint pos and vel
+            # best_optimal_next_state_i[24:27] += self.initial_arm_joint_position
+            # best_optimal_next_state_i[30:33] += self.initial_arm_joint_position
+            # best_optimal_next_states.append(optimal_next_state_i)
 
         # print("references",yref)
         # # print("shape ref",yref.shape)
@@ -1677,5 +1730,12 @@ class Arm_Augmented_MPC:
         # print("Iterations: ", niter)
         # print(" np iter type: ", type(niter))
         # print("shape niter: ", np.shape(niter))
-        return optimal_GRF, optimal_foothold, optimal_next_state,status, qp_time, niter
+
+
+        # sl = self.acados_ocp_solver.get(1, "sl")
+        # su = self.acados_ocp_solver.get(1, "su")
+        # print("sl", sl, "su", su)
+
+
+        return optimal_GRF, optimal_foothold, step_log,status, qp_time, niter
 

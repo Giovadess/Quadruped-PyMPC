@@ -8,7 +8,7 @@ from os import PathLike
 from pprint import pprint
 
 import numpy as np
-
+import copy
 # Gym and Simulation related imports
 from gym_quadruped.quadruped_env import QuadrupedEnv
 from gym_quadruped.utils.mujoco.visual import render_sphere, render_vector
@@ -171,8 +171,8 @@ def run_simulation(
             base_lin_vel = env.base_lin_vel(frame="world")
             base_ang_vel = env.base_ang_vel(frame="base")
             base_ori_euler_xyz = env.base_ori_euler_xyz
-            base_pos = env.base_pos
-            com_pos = env.com
+            base_pos = copy.deepcopy(env.base_pos)
+            com_pos = copy.deepcopy(env.com)
 
             # Get the reference base velocity in the world frame
             ref_base_lin_vel, ref_base_ang_vel = env.target_base_vel()

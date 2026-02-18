@@ -330,8 +330,7 @@ class WBInterface:
                                                         base_ori_euler_xyz, #replace this with actual rot matrix?
                                                         joint_pos0= arm_joint_pos0
                                                         )
-        # wrench_estimate[1] = -wrench_estimate[1]  #correct for different y axis definition
-        # wrench_estimate[3:] = 0  #only forces considered for now
+
         self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
         # wrench_estimate[3:] = np.zeros((3,))  #disable torque estimation for now
         state_current['wrench_estimated']=wrench_estimate

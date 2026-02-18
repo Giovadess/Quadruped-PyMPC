@@ -1,3 +1,4 @@
+import json
 import rclpy 
 from rclpy.node import Node 
 from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug, PassiveArmState, ZmpComputeMsg
@@ -27,7 +28,7 @@ import sys
 import os 
 
 
-from quadruped_pympc.helpers.zmp_utils import compute_zmp,plot_zmp_vis,compute_center_of_pressure,compute_zmp_margin
+from quadruped_pympc.helpers.zmp_utils import compute_zmp,compute_center_of_pressure,compute_zmp_margin
 
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -52,7 +53,7 @@ USE_DLS_CONVENTION = True
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = True
+USE_PROCESS_SHARED_MEMORY_MPC = False
 
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
@@ -154,6 +155,8 @@ class Quadruped_PyMPC_Node(Node):
         self.zmp = np.zeros(3)
         self.arm_joint_pos0 = np.zeros(3)
 
+        self.compute_control_callback_counter = 0
+
         # Mujoco env
         self.env = QuadrupedEnv(
             robot=cfg.robot,
@@ -195,6 +198,8 @@ class Quadruped_PyMPC_Node(Node):
 
         self.qp_time = 0.0
         self.niter = None
+
+        self.log = []
 
         # Torque vector
         self.tau = LegsAttr(*[np.zeros((self.env.mjModel.nv, 1)) for _ in range(4)])
@@ -239,11 +244,11 @@ class Quadruped_PyMPC_Node(Node):
             
 
         # Interactive Command Line ----------------------------
-        from console import Console
-        self.console = Console(controller_node=self)
-        thread_console = threading.Thread(target=self.console.interactive_command_line)
-        thread_console.daemon = True
-        thread_console.start()
+        # from console import Console
+        # self.console = Console(controller_node=self)
+        # thread_console = threading.Thread(target=self.console.interactive_command_line)
+        # thread_console.daemon = True
+        # thread_console.start()
 
 
         # Init for real robot and simulation gain, since real robot needs different values
@@ -594,9 +599,7 @@ class Quadruped_PyMPC_Node(Node):
                                                 )
 
         
-        # Console commands hacks
-        ref_state["ref_position"][2] += self.console.height_delta
-        ref_state["ref_orientation"][1] += self.console.pitch_delta
+
         
         # Publish to the MPC controller
         if(USE_THREADED_MPC):
@@ -801,6 +804,52 @@ class Quadruped_PyMPC_Node(Node):
         self.publisher_zmp_msg.publish(zmp_msg)
         # print("mujoco eef pos:", eef_pos)
 
+        ## Logging data for replay --------------------------------------------------------------------------------
+        ## create a log dictionary to store all the relevant data from the MPC
+        ## save this log to a json file at the end of the simulation
+        # every MPC step k
+        # step_log = {
+        #     "k": k,
+        #     "t": t,
+        #     "x0": x0.tolist(),
+        #     "x_pred": [x_i.tolist() for x_i in x_pred],
+        #     "u_pred": [u_i.tolist() for u_i in u_pred],
+        #     "u_applied": u_applied.tolist(),
+        #     "zmp_pred": zmp_pred,
+        #     "sumFz_pred": sumFz_pred,
+        #     "solver_status": status,
+        # }
+        self.log.append(self.nmpc_predicted_state)
+        # print(self.log[-1]["solver_status"]==3)
+        ## Now to the log I want to add: state_current, ref_state, contact_sequence, nmpc_GRFs, nmpc_footholds, qp_time, niter
+
+        print("processing")
+        self.compute_control_callback_counter += 1
+        # if self.niter[1] > 14 :
+        if self.log[-1]["solver_status"]==3 :
+                # Save the log to a JSON file at the end of the simulation
+            #take only the last 20 logs
+            self.log = self.log[-20:]
+            # change to a serializable format
+            # su_i and su_l are numpy arrays so we need to convert them to lists
+            for log_entry in self.log:
+                if isinstance(log_entry, dict):
+                    for key in log_entry:
+                        if isinstance(log_entry[key], np.ndarray):
+                            log_entry[key] = log_entry[key].tolist()
+
+            #### 
+            # print("log entry shape:", self.log[-1])
+            with open('mpc_log_armpc.json', 'w') as f:
+                json.dump(self.log, f, indent=4)
+            # breakpoint()
+
+
+            
+            print("QP Fail, log saved to mpc_log.json")
+
+        
+
     
 
 def main():
@@ -810,7 +859,12 @@ def main():
     controller_node = Quadruped_PyMPC_Node()
 
     rclpy.spin(controller_node)
+
+
+
     controller_node.destroy_node()
+
+        
     rclpy.shutdown()
 
 

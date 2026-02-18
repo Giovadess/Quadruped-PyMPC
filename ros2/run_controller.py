@@ -27,7 +27,7 @@ import sys
 import os 
 
 
-from quadruped_pympc.helpers.zmp_utils import compute_zmp,plot_zmp_vis,compute_center_of_pressure,compute_zmp_margin
+from quadruped_pympc.helpers.zmp_utils import compute_zmp,compute_zmp_margin
 
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -48,11 +48,11 @@ os.sched_setaffinity(pid, affinity_mask)
 #for real time, launch it with chrt -r 99 python3 run_controller.py
 
 
-USE_DLS_CONVENTION = True
+USE_DLS_CONVENTION = False
 
 USE_THREADED_MPC = False
 USE_PROCESS_QUEUE_MPC = False
-USE_PROCESS_SHARED_MEMORY_MPC = True
+USE_PROCESS_SHARED_MEMORY_MPC = False
 
 if(USE_PROCESS_SHARED_MEMORY_MPC):
         # -------------------- Shared-memory layout for MPC → WBC --------------------------------------
@@ -118,7 +118,7 @@ class Quadruped_PyMPC_Node(Node):
         self.subscriber_arm = self.create_subscription(JointState, '/passive_arm_joint_states',self.get_arm_interface_callback, 1)
         # Arm interface publisher
         self.publisher_arm_interface = self.create_publisher(PassiveArmState,"/mpc_arm_infos", 1)
-        self.publisher_zmp_msg = self.create_publisher(ZmpComputeMsg,"/zmp_topic",1)
+        # self.publisher_zmp_msg = self.create_publisher(ZmpComputeMsg,"/zmp_topic",1)
         self.rest_client = self.create_client(Trigger, 'set_rest_position')
         if(USE_SCHEDULER):
             self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_control_callback)
@@ -378,7 +378,8 @@ class Quadruped_PyMPC_Node(Node):
                 arr[IDX_JP]   = (nmpc_joints_pos if nmpc_predicted_state is not None else np.zeros(12).reshape(-1)[:12])
                 arr[IDX_JV]   = (nmpc_joints_pos if nmpc_predicted_state is not None else np.zeros(12).reshape(-1)[:12])
                 arr[IDX_JA]   = (nmpc_joints_pos if nmpc_predicted_state is not None else np.zeros(12).reshape(-1)[:12])
-                arr[IDX_PRED] = np.asarray(nmpc_predicted_state).reshape(-1)[:12]
+                # arr[IDX_PRED] = np.asarray(nmpc_predicted_state).reshape(-1)[:12]
+                arr[IDX_PRED] = np.zeros(12)
                 arr[IDX_BSF]  = float(best_sample_freq)
                 arr[IDX_LAST] = float(last_mpc_loop_time)
                 arr[IDX_QPT]  = float(qp_time)
@@ -463,6 +464,11 @@ class Quadruped_PyMPC_Node(Node):
         self.arm_joint_pos0 = np.array(msg.position[3:], dtype=float).copy()
         self.arm_joint_vel=np.array(msg.velocity, dtype=float).copy()
         # print("arm joint pos callback:", self.arm_joint_pos)
+        self.arm_joint_pos[2]= -self.arm_joint_pos[2] # I need to switch the sign of joint 3 to match the real robot convention
+        self.arm_joint_vel[2]= -self.arm_joint_vel[2] # I need to switch the sign of joint 3 to match the real robot convention
+        # self.arm_joint_pos = np.zeros(3)
+        # self.arm_joint_pos0 = np.zeros(3)
+        # self.arm_joint_vel = np.zeros(3)
 
 
 
@@ -639,6 +645,8 @@ class Quadruped_PyMPC_Node(Node):
                         self.best_sample_freq  = float(tmp[IDX_BSF])
                         self.last_mpc_loop_time = float(tmp[IDX_LAST])
                         self.last_mpc_update_mono = float(tmp[IDX_STAMP])
+                        self.qp_time = float(tmp[IDX_QPT])
+                        self.niter = tmp[IDX_NITER].copy()
                         
         else:
             last_mpc_process_time = time.time()
@@ -742,51 +750,50 @@ class Quadruped_PyMPC_Node(Node):
         self.publisher_arm_interface.publish(passive_arm_msg)
 
 
-        # zmp=compute_zmp(np.array([base_pos[0],base_pos[1],base_pos[2]]),
-        #                 base_acc, #imu?? this should eb also present in
-        #                 base_ori_euler_xyz,
-        #                 np.concatenate([state_current['wrench_estimated']], axis=0).flatten(),
-        #                 eef_pos_mjco, # I can get this from mujoco or from the estimator too passive_arm_eef_position
-        #                 )
-        
-        
-        # # zmp=-1 * zmp
-        # zmp_margin=compute_zmp_margin(zmp,self.nmpc_footholds,self.contact_sequence) # this is full missing two entires in zmp
-        # cop=compute_center_of_pressure(np.array([base_pos[0],base_pos[1],0]),base_ori_euler_xyz,feet_pos,self.nmpc_GRFs)
-        ###
 
 
-        zmp = compute_zmp(base_pos,
-                          base_pos,
-                          base_ori_euler_xyz,
-                          state_current['wrench_estimated'],
-                          eef_pos)
-        # print("contact state:", self.feet_contact)
-        # contact_state, _, feet_GRF = self.env.feet_contact_state(ground_reaction_forces=True
-        
-        zmp_margin=compute_zmp_margin(zmp,feet_pos, self.feet_contact)
-        # print("contact_state:", contact_state)
+
+        # zmp = compute_zmp(base_pos,
+        #                   base_pos,
+        #                   base_ori_euler_xyz,
+        #                   state_current['wrench_estimated'],
+        #                   eef_pos)
+        # # print("contact state:", self.feet_contact)
+        # ## I need to pass the desired contact sequence here
+        # contact_sequence_des = [contact_sequence[0][0],
+        #                         contact_sequence[1][0],
+        #                         contact_sequence[2][0],
+        #                         contact_sequence[3][0]
+
+        #                         ]
+        # # contact_state, _, feet_GRF = self.env.feet_contact_state(ground_reaction_forces=True
+        # zmp_margin=compute_zmp_margin(zmp,feet_pos, contact_sequence_des)
+        # # print("contact_state:", contact_state)
 
         
-        ### ZMP MESSAGE
-        zmp_msg = ZmpComputeMsg()
-        zmp_msg.com_pos = base_pos
-        # zmp_msg.com_acc = 100
-        zmp_msg.com_ori = base_ori_euler_xyz
-        zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
-        zmp_msg.eef_pos = eef_pos
-        zmp_msg.zmp = zmp
-        zmp_msg.zmp_margin = [zmp_margin]
-        # zmp_msg.footholds = self.nmpc_footholds
-        # zmp_msg.contact =  self.contact_sequence
-        # zmp_msg.nmpc_grfs = self.nmpc_GRFs
-        self.publisher_zmp_msg.publish(zmp_msg)
+        # ### ZMP MESSAGE
+        # zmp_msg = ZmpComputeMsg()
+        # zmp_msg.com_pos = base_pos
+        # # zmp_msg.com_acc = 100
+        # zmp_msg.com_ori = base_ori_euler_xyz
+        # zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
+        # zmp_msg.eef_pos = eef_pos
+        # zmp_msg.zmp = zmp
+        # zmp_msg.zmp_margin = [zmp_margin]
+        # # Fill the zmp message with the grfs-z desired by the mpc on z
+        # zmp_msg.nmpc_grfs=[self.nmpc_GRFs['FL'][2],
+        #                    self.nmpc_GRFs['RL'][2],
+        #                    self.nmpc_GRFs['RL'][2],
+        #                    self.nmpc_GRFs['RR'][2]]
+        # ### Add contact debug as well
+        # zmp_msg.contact = contact_sequence_des
+        # # zmp_msg.footholds = self.nmpc_footholds
+        # # zmp_msg.contact =  self.contact_sequence
+        # # zmp_msg.nmpc_grfs = self.nmpc_GRFs
+        # self.publisher_zmp_msg.publish(zmp_msg)
         # print("mujoco eef pos:", eef_pos)
 
-        
-
-
-
+    
 
 def main():
     print('Hello from Quadruped-PyMPC ros interface.')

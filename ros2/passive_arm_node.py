@@ -7,7 +7,8 @@ import math
 from sensor_msgs.msg import JointState
 from collections import deque
 from geometry_msgs.msg import Twist
-
+import statistics # <--- ADD THIS
+from collections import deque
 class Passive_Arm_Int(Node):
     def __init__(self):
         super().__init__('encoder_publisher')
@@ -55,7 +56,12 @@ class Passive_Arm_Int(Node):
         period = 0.05  # 20 Hz
         self.counts_per_rev = 1024            # encoder counts per revolution (10-bit)
         self.count_to_rad = (2.0 * math.pi) / self.counts_per_rev  # counts -> radians
-
+        # ... inside __init__ ...
+        self.prev_pos_rad = None 
+        self.prev_time_ns = None
+        # ADD THIS BLOCK:
+        # 3 buffers (one per joint), window size 3 is perfect for single spikes
+        self.median_buffers = [deque(maxlen=3) for _ in range(len(self.joint_names)//2)]
         # ---------------- Loop ----------------
         self.timer = self.create_timer(period, self.timer_callback)
         self.get_logger().info(
@@ -154,14 +160,24 @@ class Passive_Arm_Int(Node):
             if abs(q_pos[i] - q_pos_rest[i]) > math.pi:
                 q_pos[i] = q_pos_rest[i]
 
+        # ----------------- FILTERING SECTION -----------------
+        for i in range(len(q_pos)):
+            # 1. Feed the raw value into the history buffer
+            self.median_buffers[i].append(q_pos[i])
+
+            # 2. MEDIAN FILTER: Pick the middle value (ignores the spike)
+            # If buffer isn't full yet, just use current value to avoid errors
+            if len(self.median_buffers[i]) > 0:
+                clean_val = statistics.median(self.median_buffers[i])
+            else:
+                clean_val = q_pos[i]
+
+
         # Filtering to avoid jumps due to unwrapping
 
         if self.prev_pos_rad is not None:
             for i in range(len(q_pos)):
-                q_pos[i] = self.low_pass_filter(q_pos[i], self.prev_pos_rad[i], 0.5)
-
-
-        # self.get_logger().info(f"raw: {values}  rest: {self.rest_position}  diff: {[v-r for v,r in zip(values, self.rest_position)]}")
+                q_pos[i] = self.low_pass_filter(q_pos[i], self.prev_pos_rad[i], 0.3)
 
 
         # ---- Build JointState ----

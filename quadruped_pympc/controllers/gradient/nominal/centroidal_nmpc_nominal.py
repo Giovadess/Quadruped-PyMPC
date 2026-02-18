@@ -247,7 +247,7 @@ class Acados_NMPC_Nominal:
             ocp.solver_options.qp_solver_iter_max = 10
             ocp.solver_options.hpipm_mode = "SPEED"
         elif config.mpc_params['solver_mode'] == "crazy_speed":
-            ocp.solver_options.qp_solver_iter_max = 5
+            ocp.solver_options.qp_solver_iter_max = 15
             ocp.solver_options.hpipm_mode = "SPEED_ABS"
 
         # ocp.solver_options.line_search_use_sufficient_descent = 1
@@ -1705,5 +1705,23 @@ class Acados_NMPC_Nominal:
         optimal_next_state[18:21] = optimal_foothold[2]
         optimal_next_state[21:24] = optimal_foothold[3]
 
+        t = config.mpc_params['dt']
+        for i in range(self.horizon + 1):
+            sl_i = self.acados_ocp_solver.get(i, "sl")
+            su_i = self.acados_ocp_solver.get(i, "su")
+
+        step_log = {
+            "k": 25,
+            "t": t,
+            "x_pred": [self.acados_ocp_solver.get(i, "x").tolist()
+                       for i in range(self.horizon + 1)],
+            "u_pred": [self.acados_ocp_solver.get(i, "u").tolist()
+               for i in range(self.horizon)],
+            "sl_i": sl_i,
+            "su_i": su_i,
+            "solver_status": status,
+        }
+
+
         # Return the optimal GRF, the optimal foothold, the next state and the status of the optimization
-        return optimal_GRF, optimal_foothold, optimal_next_state, status , qp_time, niter
+        return optimal_GRF, optimal_foothold, step_log, status , qp_time, niter

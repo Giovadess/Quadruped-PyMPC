@@ -457,16 +457,16 @@ class Arm_Augmented_Centroidal_Model:
         wrench_estimate_lin_base = external_wrench_linear #linear part of the wrench estimated from the arm end effector in the world frame
         wrench_estimate_ang_base = external_wrench_angular #angular part of the wrench estimated from the arm end effector in the world fram must go in base frame 
 
-        wrench_estimate_mixed = cs.vertcat(wrench_estimate_lin_base, wrench_estimate_ang_base) #wrench estimated from the arm end effector in the mixed representation
+        # wrench_estimate_mixed = cs.vertcat(wrench_estimate_lin_base, wrench_estimate_ang_base) #wrench estimated from the arm end effector in the mixed representation
 
-        tau_ext = jac_eef_arm.T @ wrench_estimate_mixed #this is the external torque from the arm end effector
+        # tau_ext = jac_eef_arm.T @ wrench_estimate_mixed #this is the external torque from the arm end effector
 
-        # # ## Spring-damping matrix
+        # # # ## Spring-damping matrix
 
         D_M= cs.SX.zeros(3,1)
-        D_M[0] = - k[0] * (q_arm[0]-self.q_arm_rest_1)   - d[0] * (q_dot_arm[0]) + tau_ext[0]
-        D_M[1] = - k[1] * (q_arm[1]-self.q_arm_rest_2)   - d[1] * (q_dot_arm[1]) + tau_ext[1]
-        D_M[2] = - k[2] * (q_arm[2]-self.q_arm_rest_3)   - d[2] * (q_dot_arm[2]) + tau_ext[2]
+        D_M[0] = - k[0] * (q_arm[0]-self.q_arm_rest_1)   - d[0] * (q_dot_arm[0]) #+ tau_ext[0]
+        D_M[1] = - k[1] * (q_arm[1]-self.q_arm_rest_2)   - d[1] * (q_dot_arm[1]) #+ tau_ext[1]
+        D_M[2] = - k[2] * (q_arm[2]-self.q_arm_rest_3)   - d[2] * (q_dot_arm[2]) #+ tau_ext[2]
 
         q_ddot_arm = cs.inv(M_arm) @ ( -B_arm + D_M) 
 
@@ -475,13 +475,13 @@ class Arm_Augmented_Centroidal_Model:
 
         # ###
         # # external wrench in base frame
-        tau_arm_B = b_R_w @ wrench_estimate_ang_base + cs.skew(p_eef - com_position) @ wrench_estimate_lin_base
+        # tau_arm_B = b_R_w @ wrench_estimate_ang_base + cs.skew(p_eef - com_position) @ wrench_estimate_lin_base
 
-        temp  +=  + tau_base_arm[0:3] #+ wrench_estimate_lin_base 
-        temp2 +=  + tau_base_arm[3:6] #+ wrench_estimate_ang_base #+tau_arm_B #this is the torque that goes in the base frame
-        # temp  = temp + external_wrench_linear
-        # temp2 = temp2 + external_wrench_angular  
-        # # # set arm to zero
+        temp  +=  + tau_base_arm[0:3] + wrench_estimate_lin_base 
+        temp2 +=  + tau_base_arm[3:6] + wrench_estimate_ang_base #+tau_arm_B #this is the torque that goes in the base frame
+
+
+        # # # set arm dynamics to zero
         ### setting this made the system at least stand up
         # q_ddot_arm = cs.SX.zeros(3,1) #arm acceleration is zero for now
         # q_dot_arm = cs.SX.zeros(3,1) #arm joint velocity

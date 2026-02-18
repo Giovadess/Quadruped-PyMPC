@@ -323,4 +323,4 @@ ros2/msgs_ws/install/
 ros2/msgs_ws/log/
 
 #rosbag directory
-rosbag_12_12/
+rosbags/
