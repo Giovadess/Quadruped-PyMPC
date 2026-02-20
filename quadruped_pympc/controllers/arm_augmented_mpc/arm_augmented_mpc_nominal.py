@@ -508,34 +508,7 @@ class Arm_Augmented_MPC:
         return Jbu, ubu, lbu
 
     def set_weight(self, nx, nu):
-        # Define the weight matrices for the cost function
 
-        # Q_position = np.array([200, 5000, 200])  # x, y, z
-        # Q_velocity = np.array([200, 5000, 200])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([200, 200, 200])  # roll, pitch, yaw
-        # Q_base_angle_rates = np.array([10,10, 10])  # roll_rate, pitch_rate, yaw_rate
-        # Q_foot_pos = np.array([1, 1, 1])  # f_x, f_y, f_z (should be 4 times this, once per foot)
-
-        ## Base orientation tracking
-        # Q_position = np.array([50, 50, 500])  # x, y, z
-        # Q_velocity = np.array([100, 100, 50])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([10,10, 2000])  # roll, pitch, yaw
-        # Q_base_angle_rates = np.array([80,80,600])  # roll_rate, pitch_rate, yaw_rate
-        # Q_foot_pos = np.array([10, 10, 10])  # f_x, f_y, f_z (should be 4 times this, once per foot)
-
-
-        # Q_position = np.array([0, 0, 1500])  # x, y, z
-        # Q_velocity = np.array([200, 200, 200])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([500, 500, 0])  # roll, pitch, yaw
-        # Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
-
-
-        ### Experiments working till now no CRAWL
-        # Q_position = np.array([0, 0, 1000])  # x, y, z
-        # Q_velocity = np.array([500, 500, 100])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([200,200, 0])  # roll, pitch, yaw 
-        # Q_base_angle_rates = np.array([2, 2, 25])  # roll_rate, pitch_rate, yaw_rate
-        # Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
 
         ### Original weights
         Q_position = np.array([0, 0, 1500])  # x, y, z
