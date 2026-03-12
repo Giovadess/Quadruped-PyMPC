@@ -13,58 +13,27 @@ import math
 
 
 def compute_zmp(base_position,linear_acc,base_or,ext_wrenches,Pee):
-    # TODO: This import should go
-    base_w = base_position
+    del base_or
 
-    yaw = base_or[2]
-    h_R_w = np.zeros((2, 2))
-    h_R_w[0, 0] = np.cos(yaw)
-    h_R_w[0, 1] = np.sin(yaw)
-    h_R_w[1, 0] = -np.sin(yaw)
-    h_R_w[1, 1] = np.cos(yaw)
-    #h_R_w is the rotation matrix from world to base
+    if not config.mpc_params['use_zmp_stability']:
+        return np.array([base_position[0], base_position[1], 0.0])
 
-    h_R_w=R.from_euler('xyz', base_or).as_matrix()
+    gravity = np.array([0.0, 0.0, -9.81])
+    mass = 25.523
+    robot_height = 0.35
 
-    gravity = np.array([0, 0, -9.81])
-    mass=26  #robot mass only the total mass is given by the external force along x!
-    linear_com_acc = linear_acc
+    total_vertical_force = mass * (-gravity[2]) + ext_wrenches[2]
+    safe_vertical_force = max(total_vertical_force, 10.0)
 
+    zmp_x = mass * (-gravity[2]) * base_position[0] - robot_height * mass * linear_acc[0]
+    zmp_x += Pee[0] * ext_wrenches[2] - Pee[2] * ext_wrenches[0]
+    zmp_x /= safe_vertical_force
 
-    if (config.mpc_params['use_zmp_stability']):
+    zmp_y = mass * (-gravity[2]) * base_position[1] - robot_height * mass * linear_acc[1]
+    zmp_y += Pee[1] * ext_wrenches[2] - Pee[2] * ext_wrenches[1]
+    zmp_y /= safe_vertical_force
 
-
-        zmp_com_pos = mass*gravity[2]*(base_w[0])/(mass*gravity[2]+ext_wrenches[2])
-
-        zmp_com_acc= base_w[2]*mass*linear_com_acc[0]/(mass*gravity[2]+ext_wrenches[2])
-
-        # temp_x = Pee[0]*ext_wrenches[2]
-
-        zmp_x_ext_forces =  (Pee[0]*ext_wrenches[2] - Pee[2]*ext_wrenches[0])/(mass*gravity[2]+ext_wrenches[2])
-
-        zmp_x = (zmp_com_pos + zmp_com_acc + zmp_x_ext_forces)
-
-
-
-        zmp_com_pos_y = mass*gravity[2]*(base_w[1])/(mass*gravity[2]+ext_wrenches[2])
-
-        zmp_com_acc_y= base_w[2]*mass*linear_com_acc[1]/(mass*gravity[2]+ext_wrenches[2])
-
-        # temp_x = Pee[0]*ext_wrenches[2]
-
-        zmp_y_ext_forces =  (Pee[1]*ext_wrenches[2] - Pee[2]*ext_wrenches[1])/(mass*gravity[2]+ext_wrenches[2])
-
-        zmp_y = (zmp_com_pos_y + zmp_com_acc_y + zmp_y_ext_forces)
-
-        zmp = np.array([zmp_x,zmp_y,0])
-
-
-    else:
-        x = base_position[0]
-        y = base_position[1]
-        zmp = np.array([x,y,0])
-
-    return zmp
+    return np.array([zmp_x, zmp_y, 0.0])
 
 
 def compute_com_acc(base_position,base_or, forces):
@@ -153,7 +122,8 @@ def signed_distance(point,p1,p2):
     numerator =(x2 - x1) * (y1-y0) - (y2 - y1) * (x1-x0)
     denominator = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
     if denominator == 0:
-        raise ValueError("p1 and p2 cannot be the same point")
+        # raise ValueError("p1 and p2 cannot be the same point")
+        margin=0
     margin=numerator / denominator
     return margin
     # if margin < 0.07:
@@ -222,6 +192,5 @@ def compute_capture_point(robot_com, robot_com_vel):
     capture_point = robot_com[0:2] + robot_com_vel[0:2] / k
 
     return capture_point
-
 
 

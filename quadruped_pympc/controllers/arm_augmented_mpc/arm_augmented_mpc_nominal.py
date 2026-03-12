@@ -65,7 +65,7 @@ class Arm_Augmented_MPC:
            self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json",build = True, generate = True)
  
         else :
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = True, generate = True)
+           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = False, generate = False)
         
         # Initialize solver
         for stage in range(self.horizon + 1):
@@ -563,7 +563,7 @@ class Arm_Augmented_MPC:
             R_foot_force = np.array(
                 [0.00001, 0.00001, 0.00001])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         else:
-            R_foot_force = np.array([0.022, 0.02, 0.02]) # increase this?'
+            R_foot_force = np.array([0.008, 0.008, 0.025]) # increase this?'
 
         Q_mat = np.diag(np.concatenate((Q_position, Q_velocity,
                                         Q_base_angle, Q_base_angle_rates,
