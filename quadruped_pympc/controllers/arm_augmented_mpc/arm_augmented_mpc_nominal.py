@@ -273,45 +273,81 @@ class Arm_Augmented_MPC:
 
             # collaborative edit
             # Compute the ZMP
-            # robotHeight = base_w[2]
-            robotHeight = 0.35
-            mass = 25.523
-            foot_force_fl = self.centroidal_model.inputs[12:15] * self.centroidal_model.param[0]
-            foot_force_fr = self.centroidal_model.inputs[15:18] * self.centroidal_model.param[1]
-            foot_force_rl = self.centroidal_model.inputs[18:21] * self.centroidal_model.param[2]
-            foot_force_rr = self.centroidal_model.inputs[21:24] * self.centroidal_model.param[3]
-            temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
-            
+
+            robotHeight = base_w[2]
+            # foot_force_fl = self.centroidal_model.inputs[12:15] * self.centroidal_model.param[0]
+            # foot_force_fr = self.centroidal_model.inputs[15:18] * self.centroidal_model.param[1]
+            # foot_force_rl = self.centroidal_model.inputs[18:21] * self.centroidal_model.param[2]
+            # foot_force_rr = self.centroidal_model.inputs[21:24] * self.centroidal_model.param[3]
+            # temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
             gravity = np.array([0, 0, -9.81])
-            linear_com_acc = (1/mass)@temp + gravity 
-            # zmp = base_w[0:2] - linear_com_acc[0:2]*(robotHeight/(-gravity[2]))
-
-
-            external_forces_linear = self.centroidal_model.param[13:16] #state?? #this is not correct, should be parameter!!
+            linear_com_acc = (1 / self.centroidal_model.mass) @ temp + gravity
+            zmp = base_w[0:2] - linear_com_acc[0:2] * (robotHeight / (-gravity[2]))
+            # robotHeight = base_w[2]
+            # robotHeight = base_w[2]
+            # mass = 25.523
+            # foot_force_fl = self.centroidal_model.inputs[12:15] * self.centroidal_model.param[0]
+            # foot_force_fr = self.centroidal_model.inputs[15:18] * self.centroidal_model.param[1]
+            # foot_force_rl = self.centroidal_model.inputs[18:21] * self.centroidal_model.param[2]
+            # foot_force_rr = self.centroidal_model.inputs[21:24] * self.centroidal_model.param[3]
+            # temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
             
-            end_effector_position = self.centroidal_model.param[28:31]
-            # end_effector_position = self.centroidal_model.param[19:22]
-            # print("eef pos param in zmp constr: ",end_effector_position)
-            # print("external forces param in zmp constr: ",external_forces_linear)
+            # gravity = np.array([0, 0, -9.81])
+            # linear_com_acc = (1/mass)@temp + gravity 
+            # # zmp = base_w[0:2] - linear_com_acc[0:2]*(robotHeight/(-gravity[2]))
 
-            ## Vertical force component
-            gravity_force = mass * -gravity[2] # ~250N
-            total_vertical_force = gravity_force + external_forces_linear[2]
-            safe_vertical_force = cs.fmax(total_vertical_force, 10.0)
+            # end_effector_position = self.centroidal_model.param[28:31]
+            # external_forces_linear = self.centroidal_model.param[13:16] #state?? #this is not correct, should be parameter!!
 
-            zmp_x = mass*-gravity[2]*base_w[0] - robotHeight*mass*linear_com_acc[0]
-            
-            zmp_x = zmp_x + end_effector_position[0]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[0]
 
-            zmp_x = zmp_x/safe_vertical_force
+            # ## Vertical force component
+            # gravity_force = mass * -gravity[2] # ~250N
+            # total_vertical_force = gravity_force + external_forces_linear[2]
 
-            zmp_y = mass*-gravity[2]*base_w[1] - robotHeight*mass*linear_com_acc[1]
-            zmp_y = zmp_y + end_effector_position[1]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[1]
-            zmp_y = zmp_y/safe_vertical_force
+            # zmp_x = mass*-gravity[2]*base_w[0] - robotHeight*mass*linear_com_acc[0]
+            # zmp_x = zmp_x + end_effector_position[0]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[0]
 
-            # transform zmp to the horizontal frame
-            zmp = cs.vertcat(zmp_x, zmp_y)
-            zmp = h_R_w@(zmp - base_w[0:2])
+
+            # zmp_y = mass*-gravity[2]*base_w[1] - robotHeight*mass*linear_com_acc[1]
+            # zmp_y = zmp_y + end_effector_position[1]*external_forces_linear[2] - end_effector_position[2]*external_forces_linear[1]
+
+            # # transform zmp to the horizontal frame
+            # zmp = cs.vertcat(zmp_x, zmp_y)
+            # zmp = h_R_w@(zmp - base_w[0:2])
+            # x = zmp[0]
+            # y = zmp[1]
+
+            # Compute the ZMP NEW TEST
+
+
+
+            ### Collabroative controller ZMP
+
+
+            # zmp_x = (
+            #     self.centroidal_model.mass * -gravity[2] * base_w[0]
+            # )
+            # zmp_x = (
+            #     zmp_x
+            #     - end_effector_position[0] * external_forces_linear[2]
+            #     + end_effector_position[2] * external_forces_linear[0]
+            # )
+            # zmp_x = zmp_x / (self.centroidal_model.mass * -gravity[2] - external_forces_linear[2])
+
+            # zmp_y = (
+            #     self.centroidal_model.mass * -gravity[2] * base_w[1]
+                
+            # )
+            # zmp_y = (
+            #     zmp_y
+            #     - end_effector_position[1] * external_forces_linear[2]
+            #     + end_effector_position[2] * external_forces_linear[1]
+            # )
+            # zmp_y = zmp_y / (self.centroidal_model.mass * -gravity[2] - external_forces_linear[2])
+
+            # zmp = cs.vertcat(zmp_x, zmp_y)
+            zmp = h_R_w @ (zmp - base_w[0:2])
+
             x = zmp[0]
             y = zmp[1]
         else:
@@ -563,7 +599,7 @@ class Arm_Augmented_MPC:
             R_foot_force = np.array(
                 [0.00001, 0.00001, 0.00001])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         else:
-            R_foot_force = np.array([0.008, 0.008, 0.025]) # increase this?'
+            R_foot_force = np.array([0.008, 0.008, 0.015]) # increase this?'
 
         Q_mat = np.diag(np.concatenate((Q_position, Q_velocity,
                                         Q_base_angle, Q_base_angle_rates,

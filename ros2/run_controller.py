@@ -468,6 +468,9 @@ class Quadruped_PyMPC_Node(Node):
         # print("arm joint pos callback:", self.arm_joint_pos)
         self.arm_joint_pos[2]= -self.arm_joint_pos[2] # I need to switch the sign of joint 3 to match the real robot convention
         self.arm_joint_vel[2]= -self.arm_joint_vel[2] # I need to switch the sign of joint 3 to match the real robot convention
+
+        # self.arm_joint_pos[1]= -self.arm_joint_pos[1] # I need to switch the sign of joint 3 to match the real robot convention
+        # self.arm_joint_vel[1]= -self.arm_joint_vel[1] # I need to switch the sign of joint 3 to match the real robot convention
         # self.arm_joint_pos = np.zeros(3)
         # self.arm_joint_pos0 = np.zeros(3)
         # self.arm_joint_vel = np.zeros(3)
