@@ -26,7 +26,7 @@ class Console():
         # Autocomplete setup
         self.commands = [
             "stw", "ooo", "narrowStance", "wideStance", "setGaitTimer", 
-            "setup", "goUp", "goDown", "help", "ictp", "veloictyFollower","setArmRestService", "ArmInfos", "comoffset"
+            "setup", "goUp", "goDown", "help", "ictp", "startFollowerMode","setArmRestService", "ArmInfos", "comoffset"
         ]
         readline.set_completer(self.complete)
         readline.parse_and_bind("tab: complete")
@@ -350,13 +350,15 @@ class Console():
                             self.controller_node.env._ref_base_lin_vel_H[1] = 0
                             self.controller_node.env._ref_base_ang_yaw_dot = 0 
                             break
-                elif(input_string == "veloictyFollower"):
+                elif(input_string == "startFollowerMode"):
                     print("ARM VELOCITY")
-
+                    self.walking = True
+                    self.controller_node.wb_interface.pgg.gait_type = self.controller_node.wb_interface.pgg.previous_gait_type
+                    self.controller_node.wb_interface.pgg.reset()
                     while True:
                         # command = readchar.readkey()
 
-                        self.controller_node.env._ref_base_lin_vel_H[0] = self.controller_node.wb_interface.ref_base_lin_vel_pacc
+                        self.controller_node.env._ref_base_lin_vel_H[0] = -self.controller_node.wb_interface.ref_base_lin_vel_pacc
                         self.controller_node.env._ref_base_ang_yaw_dot  = self.controller_node.wb_interface.ref_base_ang_vel_pacc
                         print("lin_vel",self.controller_node.wb_interface.ref_base_lin_vel_pacc)
                         print("ang_vel",self.controller_node.wb_interface.ref_base_ang_vel_pacc)
@@ -369,6 +371,8 @@ class Console():
                             self.controller_node.env._ref_base_lin_vel_H[1] = 0
                             self.controller_node.env._ref_base_ang_yaw_dot  = 0 
                             print("Exiting Velocity Follower")
+                            self.walking = False
+                            self.controller_node.wb_interface.pgg.gait_type = 7 # FULL_STANCE
                             break
                 elif (input_string == "setArmRestService"):
                     req = Trigger.Request()

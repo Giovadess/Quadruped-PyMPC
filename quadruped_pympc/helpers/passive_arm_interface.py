@@ -349,11 +349,11 @@ class Passive_Arm_Interface:
         if (arm_joint_pos_curr[2]   > 20 *np.pi/180.0):
             ref_vel_x=0.1
         elif (arm_joint_pos_curr[2] > 10 *np.pi/180.0):
-            ref_vel_x=0.05
+            ref_vel_x=0.1
         elif (arm_joint_pos_curr[2]  < -20 *np.pi/180.0):
             ref_vel_x=-0.1
         elif (arm_joint_pos_curr[2]< -10 *np.pi/180.0):
-            ref_vel_x=-0.05
+            ref_vel_x=-0.1
         else:
             ref_vel_x=0.0
 
@@ -361,15 +361,15 @@ class Passive_Arm_Interface:
         #     ref_vel_x=config.simulation_params['ref_x_dot']
         #yaw motion
         if (arm_joint_pos_curr[0]-self.joint_pos0[0] > 10 *np.pi/180.0 and arm_joint_pos_curr[0]-self.joint_pos0[0] < 20*np.pi/180.0):
-            ref_vel_yaw= 0.2
-        elif (arm_joint_pos_curr[0]-self.joint_pos0[0] < -10 *np.pi/180.0 and arm_joint_pos_curr[0]-self.joint_pos0[0] > -20 *np.pi/180.0):
             ref_vel_yaw= 0.1
+        elif (arm_joint_pos_curr[0]-self.joint_pos0[0] < -10 *np.pi/180.0 and arm_joint_pos_curr[0]-self.joint_pos0[0] > -20 *np.pi/180.0):
+            ref_vel_yaw= 0.05
 
         elif (arm_joint_pos_curr[0]-self.joint_pos0[0] > 20*np.pi/180.0):
-            ref_vel_yaw= -0.2
+            ref_vel_yaw= 0.1
 
         elif (arm_joint_pos_curr[0]-self.joint_pos0[0] < -20 *np.pi/180.0):
-            ref_vel_yaw= -0.1
+            ref_vel_yaw= -0.05
 
         else:
             ref_vel_yaw=0.0
