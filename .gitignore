@@ -326,4 +326,7 @@ ros2/msgs_ws/log/
 rosbags/
 ros2/test_27_3/
 ros2/test_30_3/
+ros2/test_30_mar/
+ros2/test_31_3/
+ros2/OLD_ROSBAGS/
 ros2/comparison_folder/
