@@ -275,11 +275,11 @@ class Arm_Augmented_MPC:
             # Compute the ZMP
 
             robotHeight = base_w[2]
-            # foot_force_fl = self.centroidal_model.inputs[12:15] * self.centroidal_model.param[0]
-            # foot_force_fr = self.centroidal_model.inputs[15:18] * self.centroidal_model.param[1]
-            # foot_force_rl = self.centroidal_model.inputs[18:21] * self.centroidal_model.param[2]
-            # foot_force_rr = self.centroidal_model.inputs[21:24] * self.centroidal_model.param[3]
-            # temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
+            foot_force_fl = self.centroidal_model.inputs[12:15] * self.centroidal_model.param[0]
+            foot_force_fr = self.centroidal_model.inputs[15:18] * self.centroidal_model.param[1]
+            foot_force_rl = self.centroidal_model.inputs[18:21] * self.centroidal_model.param[2]
+            foot_force_rr = self.centroidal_model.inputs[21:24] * self.centroidal_model.param[3]
+            temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
             gravity = np.array([0, 0, -9.81])
             linear_com_acc = (1 / self.centroidal_model.mass) @ temp + gravity
             zmp = base_w[0:2] - linear_com_acc[0:2] * (robotHeight / (-gravity[2]))
@@ -576,7 +576,7 @@ class Arm_Augmented_MPC:
         ### Original weights
         Q_position = np.array([0, 0, 1500])  # x, y, z
         Q_velocity = np.array([200, 200, 200])  # x_vel, y_vel, z_vel
-        Q_base_angle = np.array([200, 200, 0])  # roll, pitch, yaw
+        Q_base_angle = np.array([200, 300, 0])  # roll, pitch, yaw
         Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
         Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         # # ARM AUGMENTATION

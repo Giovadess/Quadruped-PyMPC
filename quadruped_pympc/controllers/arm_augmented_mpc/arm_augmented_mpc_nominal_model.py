@@ -482,7 +482,7 @@ class Arm_Augmented_Centroidal_Model:
 
 
         # # # set arm dynamics to zero
-        ### collaborative controller comparison
+        ## collaborative controller comparison
         # q_dot_arm = cs.SX.zeros(3,1) #arm joint velocity
         # q_ddot_arm= cs.SX.zeros(3,1)
         # temp  += wrench_estimate_lin_base 
