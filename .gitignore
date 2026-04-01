@@ -324,5 +324,6 @@ ros2/msgs_ws/log/
 
 #rosbag directory
 rosbags/
-test_27_3/
-test_30_3/
+ros2/test_27_3/
+ros2/test_30_3/
+ros2/comparison_fodler/
