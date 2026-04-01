@@ -120,6 +120,54 @@ class WBInterface:
         )
 
         self.Jeef_arm =np.zeros((3, 3))  # Jacobian of the end effector in the base frame
+        self.passive_arm_wrench_filtered = np.zeros((6,))
+        self.passive_arm_state_valid = True
+        self.passive_arm_stale_time = 0.0
+        self._prev_arm_joint_pos = None
+        self._prev_arm_joint_vel = None
+        self._arm_stale_epsilon = 1e-9
+        self._arm_stale_timeout = 0.15
+        self._arm_deflection_threshold = np.deg2rad(5.0)
+        self._wrench_decay_tau = 0.05
+
+    def _update_passive_arm_health(
+        self,
+        arm_joint_pos: np.ndarray,
+        arm_joint_vel: np.ndarray,
+        arm_joint_pos0: np.ndarray,
+        simulation_dt: float,
+    ) -> bool:
+        """Mark the passive arm encoder as stale when the exact same sample repeats
+        for long enough while the arm is significantly deflected from its rest pose.
+
+        This is intentionally conservative: when triggered we keep using the arm
+        state for kinematics, but we stop trusting it for disturbance estimation.
+        """
+
+        if self._prev_arm_joint_pos is None:
+            self._prev_arm_joint_pos = arm_joint_pos.copy()
+            self._prev_arm_joint_vel = arm_joint_vel.copy()
+            self.passive_arm_stale_time = 0.0
+            self.passive_arm_state_valid = True
+            return self.passive_arm_state_valid
+
+        position_repeated = np.allclose(
+            arm_joint_pos, self._prev_arm_joint_pos, rtol=0.0, atol=self._arm_stale_epsilon
+        )
+        velocity_repeated = np.allclose(
+            arm_joint_vel, self._prev_arm_joint_vel, rtol=0.0, atol=self._arm_stale_epsilon
+        )
+        arm_deflected = np.linalg.norm(arm_joint_pos - arm_joint_pos0) > self._arm_deflection_threshold
+
+        if position_repeated and velocity_repeated and arm_deflected:
+            self.passive_arm_stale_time += simulation_dt
+        else:
+            self.passive_arm_stale_time = 0.0
+
+        self.passive_arm_state_valid = self.passive_arm_stale_time < self._arm_stale_timeout
+        self._prev_arm_joint_pos = arm_joint_pos.copy()
+        self._prev_arm_joint_vel = arm_joint_vel.copy()
+        return self.passive_arm_state_valid
 
 
     def update_state_and_reference(
@@ -190,6 +238,15 @@ class WBInterface:
             damping_gains=self.damping_gains,
         )
 
+
+        passive_arm_state_valid = self._update_passive_arm_health(
+            arm_joint_pos=arm_joint_pos,
+            arm_joint_vel=arm_joint_vel,
+            arm_joint_pos0=arm_joint_pos0,
+            simulation_dt=simulation_dt,
+        )
+        state_current['passive_arm_state_valid'] = passive_arm_state_valid
+        state_current['passive_arm_stale_time'] = self.passive_arm_stale_time
 
         # Modulate the desired velocity if the robot is in strange positions
         if self.vm.activated:
@@ -330,10 +387,16 @@ class WBInterface:
                                                         base_ori_euler_xyz, #replace this with actual rot matrix?
                                                         joint_pos0= arm_joint_pos0
                                                         )
-
-        self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
+        if passive_arm_state_valid:
+            self.passive_arm_wrench_filtered = wrench_estimate
+            self.ref_base_lin_vel_pacc,self.ref_base_ang_vel_pacc = self.passive_arm_interface.compute_reference_velocity(arm_joint_pos)
+        else:
+            decay = np.exp(-simulation_dt / self._wrench_decay_tau)
+            self.passive_arm_wrench_filtered *= decay
+            self.ref_base_lin_vel_pacc = 0.0
+            self.ref_base_ang_vel_pacc = 0.0
         # wrench_estimate[3:] = np.zeros((3,))  #disable torque estimation for now
-        state_current['wrench_estimated']=wrench_estimate
+        state_current['wrench_estimated']=self.passive_arm_wrench_filtered.copy()
         # state_current['wrench_estimated']=np.array([0.0,0.0,0.0,0.0,0.0,0.0])  #disable for testing with hardcoded values
         state_current['end_effector_position']= eef_position
         if cfg.mpc_params['optimize_step_freq']:
