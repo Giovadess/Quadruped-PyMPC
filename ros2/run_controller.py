@@ -786,6 +786,19 @@ class Quadruped_PyMPC_Node(Node):
         zmp_msg.com_ori = base_ori_euler_xyz
         zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
         zmp_msg.eef_pos = eef_pos
+        desired_eef_pos = np.asarray(eef_pos).copy()
+        zmp_msg.sin_traj = []
+        zmp_msg.step_traj = []
+        if "ref_eef_y" in ref_state:
+            ref_eef_y = np.asarray(ref_state["ref_eef_y"]).flatten()
+            if ref_eef_y.size > 0:
+                desired_eef_pos[1] = -1 * ref_eef_y[0]
+            task_mode = ref_state.get("eef_task_mode", "")
+            if task_mode == "eef_y_sine_tracking":
+                zmp_msg.sin_traj = ref_eef_y.tolist()
+            elif task_mode == "eef_y_step_tracking":
+                zmp_msg.step_traj = ref_eef_y.tolist()
+        zmp_msg.eef_pos_desired = desired_eef_pos
         zmp_msg.zmp = zmp
         zmp_msg.zmp_margin = [zmp_margin]
         ggg=[self.nmpc_GRFs['FL'],self.nmpc_GRFs['FR'],self.nmpc_GRFs['RL'],self.nmpc_GRFs['RR']]

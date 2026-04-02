@@ -240,6 +240,32 @@ class Arm_Augmented_Centroidal_Model:
 
         self.joint_vel= np.zeros(len(self.joints_name_list_ ))
 
+    def compute_eef_position_world(self, com_position, roll, pitch, yaw, q_arm, base_position_offset):
+        joint_position_update = cs.vertcat(
+            self.joint_position[0:12],
+            q_arm
+        )
+
+        cy = cs.cos(yaw * 0.5)
+        sy = cs.sin(yaw * 0.5)
+        cp = cs.cos(pitch * 0.5)
+        sp = cs.sin(pitch * 0.5)
+        cr = cs.cos(roll * 0.5)
+        sr = cs.sin(roll * 0.5)
+        qw = cr * cp * cy + sr * sp * sy
+        qx = sr * cp * cy - cr * sp * sy
+        qy = cr * sp * cy + sr * cp * sy
+        qz = cr * cp * sy - sr * sp * cy
+        base_quat = cs.vertcat(qx, qy, qz, qw)
+
+        full_joint_pos_update = cs.vertcat(
+            com_position + base_position_offset,
+            base_quat,
+            joint_position_update
+        )
+
+        return self.fk_arm_fun(full_joint_pos_update)
+
 
 
 
@@ -559,6 +585,28 @@ class Arm_Augmented_Centroidal_Model:
         acados_model.u = self.inputs
         acados_model.p = self.param
         acados_model.name = "arm_augmented_centroidal_model"
+        acados_model.cost_y_expr = cs.vertcat(
+            self.y_ref,
+            self.compute_eef_position_world(
+                self.states[0:3],
+                self.states[6],
+                self.states[7],
+                self.states[8],
+                self.states[30:33],
+                self.base_position,
+            )
+        )
+        acados_model.cost_y_expr_e = cs.vertcat(
+            self.states,
+            self.compute_eef_position_world(
+                self.states[0:3],
+                self.states[6],
+                self.states[7],
+                self.states[8],
+                self.states[30:33],
+                self.base_position,
+            )
+        )
 
 
 

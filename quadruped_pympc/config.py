@@ -150,7 +150,7 @@ mpc_params = {
 
     # ONLY ONE CAN BE TRUE AT A TIME (only gradient)
     'use_static_stability':                    False,
-    'use_zmp_stability':                       True,
+    'use_zmp_stability':                       False,
     'trot_stability_margin':                   0.04,
     'pace_stability_margin':                   0.1,
     'crawl_stability_margin':                  0.02,  # in general, 0.02 is a good value
@@ -243,3 +243,9 @@ simulation_params = {
 
     }
 # -----------------------------------------------------------------------
+
+collaborative_task_params = {
+    'eef_y_sine_tracking': False,
+    'eef_y_step_tracking': False,
+    'eef_y_tracking_bias': 500.0,
+}

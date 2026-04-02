@@ -11,3 +11,5 @@ float64[4] contact
 float64[12] nmpc_grfs
 float64[3] zmp
 float64[] zmp_margin
+float64[] sin_traj
+float64[] step_traj

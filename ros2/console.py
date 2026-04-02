@@ -26,10 +26,20 @@ class Console():
         # Autocomplete setup
         self.commands = [
             "stw", "ooo", "narrowStance", "wideStance", "setGaitTimer", 
-            "setup", "goUp", "goDown", "help", "ictp", "startFollowerMode","setArmRestService", "ArmInfos", "comoffset"
+            "setup", "goUp", "goDown", "help", "ictp", "startFollowerMode","setArmRestService", "ArmInfos", "comoffset",
+            "eefTask", "y-trak"
         ]
         readline.set_completer(self.complete)
         readline.parse_and_bind("tab: complete")
+
+    def set_static_stance(self):
+        self.walking = False
+        self.controller_node.wb_interface.pgg.gait_type = 7
+        self.controller_node.wb_interface.pgg.previous_gait_type = 7
+        self.controller_node.wb_interface.pgg.reset()
+        self.controller_node.env._ref_base_lin_vel_H[0] = 0.0
+        self.controller_node.env._ref_base_lin_vel_H[1] = 0.0
+        self.controller_node.env._ref_base_ang_yaw_dot = 0.0
 
 
     def complete(self, text, state):
@@ -264,6 +274,7 @@ class Console():
                     start_time = time.time()
                     time_motion = 5.
                     initial_height = -cfg.simulation_params['ref_z']
+                    self.controller_node.wb_interface.frg.hip_offset += 0.06 
                     while(time.time() - start_time < time_motion):
                         time_diff = time.time() - start_time
                         self.height_delta = initial_height + (cfg.simulation_params['ref_z'] * time_diff / time_motion)
@@ -396,9 +407,61 @@ class Console():
                     if(temp != ""):
                         temp = max(-0.1, min(float(temp), 0.1))
                         self.controller_node.wb_interface.frg.com_pos_offset_b[0] = float(temp)
-                    
-                    
+                elif (input_string == "eefTask"):
+                    self.set_static_stance()
+                    print("0: hold current EEF position")
+                    print("1: y-axis sine tracking")
+                    print("2: y-axis step tracking")
+                    mode = input("EEF Task Mode [blank=0]: >>> ").strip()
+                    current_eef = self.controller_node.wb_interface.latest_eef_position.copy()
 
+                    if mode == "" or mode == "0":
+                        self.controller_node.wb_interface.configure_eef_task("hold", current_eef)
+                        print("EEF tracking disabled. Holding current EEF position.")
+                    elif mode == "1":
+                        amplitude = input("Sine amplitude [m, blank=0.0]: >>> ").strip()
+                        frequency = input("Sine frequency [Hz, blank=0.0]: >>> ").strip()
+                        bias = input("Sine bias [m, blank=0.0]: >>> ").strip()
+                        self.controller_node.wb_interface.configure_eef_task(
+                            "sine",
+                            current_eef,
+                            amplitude=0.0 if amplitude == "" else float(amplitude),
+                            frequency=0.0 if frequency == "" else float(frequency),
+                            bias=0.0 if bias == "" else float(bias),
+                        )
+                        print("EEF y sine tracking enabled.")
+                    elif mode == "2":
+                        amplitude = input("Step amplitude [m, blank=0.0]: >>> ").strip()
+                        hold_time = input("Step hold time [s, blank=1.0]: >>> ").strip()
+                        bias = input("Step bias [m, blank=0.0]: >>> ").strip()
+                        self.controller_node.wb_interface.configure_eef_task(
+                            "step",
+                            current_eef,
+                            amplitude=0.0 if amplitude == "" else float(amplitude),
+                            hold_time=1.0 if hold_time == "" else float(hold_time),
+                            bias=0.0 if bias == "" else float(bias),
+                        )
+                        print("EEF y step tracking enabled.")
+                    else:
+                        self.controller_node.wb_interface.configure_eef_task("hold", current_eef)
+                        print("Invalid EEF task mode. Holding current EEF position.")
+                elif (input_string == "y-trak"):
+                    self.set_static_stance()
+                    current_eef = self.controller_node.wb_interface.latest_eef_position.copy()
+                    target_y = input("Desired world-frame EEF y [m]: >>> ").strip()
+                    if target_y == "":
+                        self.controller_node.wb_interface.configure_eef_task("hold", current_eef)
+                        print("No target provided. Holding current EEF position.")
+                    else:
+                        self.controller_node.wb_interface.configure_eef_task(
+                            "target",
+                            current_eef,
+                            bias=float(target_y) - float(current_eef[1]),
+                        )
+                        print(f"EEF y target set to {float(target_y):.4f} m.")
+                    
+                    
+                    
                     
                                     
             except Exception as e:
@@ -422,4 +485,6 @@ class Console():
         print("setGaitTimer: Set the gait type")
         print("setupGaitTimer: Setup the gait timer")
         print("setupLegsGains: Setup the leg gains")
-        print("setupGeneral: Setup general parameters\n")
+        print("setupGeneral: Setup general parameters")
+        print("y-trak: Set a constant world-frame EEF y target")
+        print("eefTask: Configure static-stance EEF y tracking\n")

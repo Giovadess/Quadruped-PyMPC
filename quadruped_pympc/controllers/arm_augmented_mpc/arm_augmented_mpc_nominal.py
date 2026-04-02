@@ -18,6 +18,10 @@ import time
 # Class for the Acados NMPC, the model is in another file!
 class Arm_Augmented_MPC:
     def __init__(self):
+        self.world_frame_eef_y_task_names = (
+            "eef_y_sine_tracking",
+            "eef_y_step_tracking",
+        )
 
         self.horizon = config.mpc_params['horizon']  # Define the number of discretization steps
         self.dt = config.mpc_params['dt']
@@ -49,10 +53,15 @@ class Arm_Augmented_MPC:
         self.states_dim = acados_model.x.size()[0]
         self.inputs_dim = acados_model.u.size()[0]
 
-        self.yref_save = np.zeros((self.horizon + 1, self.states_dim + self.inputs_dim))
-
         # Create the acados ocp solver
         self.ocp = self.create_ocp_solver_description(acados_model)
+        self.yref_save = np.zeros((self.horizon + 1, self.ocp.cost.yref.shape[0]))
+        self.W_with_eef_tracking = copy.deepcopy(self.ocp.cost.W)
+        self.W_e_with_eef_tracking = copy.deepcopy(self.ocp.cost.W_e)
+        self.W_without_eef_tracking = copy.deepcopy(self.ocp.cost.W)
+        self.W_e_without_eef_tracking = copy.deepcopy(self.ocp.cost.W_e)
+        self.W_without_eef_tracking[-3:, -3:] = 0.0
+        self.W_e_without_eef_tracking[-3:, -3:] = 0.0
 
         code_export_dir = pathlib.Path(__file__).parent / 'c_generated_code'
         self.ocp.code_export_directory = str(code_export_dir)
@@ -86,30 +95,20 @@ class Arm_Augmented_MPC:
         ocp.model = acados_model
         nx = self.states_dim
         nu = self.inputs_dim
-        ny = nx + nu
 
         # Set dimensions
         ocp.dims.N = self.horizon
 
         # Set cost
-        Q_mat, R_mat = self.set_weight(nx, nu)
-        ocp.cost.cost_type = "LINEAR_LS"
-        ocp.cost.cost_type_e = "LINEAR_LS"
+        Q_mat, R_mat, Q_eef = self.set_weight(nx, nu)
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
 
-        ny = nx + nu
-        ny_e = nx
+        ny = nx + nu + 3
+        ny_e = nx + 3
 
-        ocp.cost.W_e = Q_mat
-        ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
-
-        ocp.cost.Vx = np.zeros((ny, nx))
-        ocp.cost.Vx[:nx, :nx] = np.eye(nx)
-
-        Vu = np.zeros((ny, nu))
-        Vu[nx: nx + nu, 0:nu] = np.eye(nu)
-        ocp.cost.Vu = Vu
-
-        ocp.cost.Vx_e = np.eye(nx)
+        ocp.cost.W_e = scipy.linalg.block_diag(Q_mat, Q_eef)
+        ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat, Q_eef)
 
         ocp.cost.yref = np.zeros((ny,))
         ocp.cost.yref_e = np.zeros((ny_e,))
@@ -127,7 +126,7 @@ class Arm_Augmented_MPC:
         ocp.constraints.lh_0 = self.constr_lh_friction
         nsh = expr_h_friction.shape[0]
         nsh_state_constraint_start = copy.copy(nsh)
-        print("shape friction constr: ", expr_h_friction.shape)
+        # print("shape friction constr: ", expr_h_friction.shape)
 
         if (self.use_foothold_constraints):
             expr_h_foot, \
@@ -145,7 +144,7 @@ class Arm_Augmented_MPC:
             expr_h_support_polygon, \
                 self.constr_uh_support_polygon, \
                 self.constr_lh_support_polygon = self.create_stability_constraints()
-            print("shape stability constr: ", expr_h_support_polygon.shape)
+            # print("shape stability constr: ", expr_h_support_polygon.shape)
 
             ocp.model.con_h_expr = cs.vertcat(ocp.model.con_h_expr, expr_h_support_polygon)
             ocp.constraints.uh = np.concatenate((ocp.constraints.uh, self.constr_uh_support_polygon))
@@ -544,44 +543,16 @@ class Arm_Augmented_MPC:
         return Jbu, ubu, lbu
 
     def set_weight(self, nx, nu):
-        # Define the weight matrices for the cost function
-
-        # Q_position = np.array([200, 5000, 200])  # x, y, z
-        # Q_velocity = np.array([200, 5000, 200])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([200, 200, 200])  # roll, pitch, yaw
-        # Q_base_angle_rates = np.array([10,10, 10])  # roll_rate, pitch_rate, yaw_rate
-        # Q_foot_pos = np.array([1, 1, 1])  # f_x, f_y, f_z (should be 4 times this, once per foot)
-
-        ## Base orientation tracking
-        # Q_position = np.array([50, 50, 500])  # x, y, z
-        # Q_velocity = np.array([100, 100, 50])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([10,10, 2000])  # roll, pitch, yaw
-        # Q_base_angle_rates = np.array([80,80,600])  # roll_rate, pitch_rate, yaw_rate
-        # Q_foot_pos = np.array([10, 10, 10])  # f_x, f_y, f_z (should be 4 times this, once per foot)
 
 
-        # Q_position = np.array([0, 0, 1500])  # x, y, z
-        # Q_velocity = np.array([200, 200, 200])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([500, 500, 0])  # roll, pitch, yaw
-        # Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
-
-
-        ### Experiments working till now no CRAWL
-        # Q_position = np.array([0, 0, 1000])  # x, y, z
-        # Q_velocity = np.array([500, 500, 100])  # x_vel, y_vel, z_vel
-        # Q_base_angle = np.array([200,200, 0])  # roll, pitch, yaw 
-        # Q_base_angle_rates = np.array([2, 2, 25])  # roll_rate, pitch_rate, yaw_rate
-        # Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
-
-        ### Original weights
-        Q_position = np.array([0, 0, 1500])  # x, y, z
-        Q_velocity = np.array([200, 200, 200])  # x_vel, y_vel, z_vel
-        Q_base_angle = np.array([200, 300, 0])  # roll, pitch, yaw
-        Q_base_angle_rates = np.array([20, 20, 50])  # roll_rate, pitch_rate, yaw_rate
-        Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
-        # # ARM AUGMENTATION
-        Q_q_arm     = np.array([0.5,0.5,0.5])    # Arm position weights - all zero
-        Q_q_dot_arm = np.array([0.5,0.5,0.5])
+        Q_position = np.array([50, 1200, 1000]) # x, y, z 
+        Q_velocity = np.array([20, 180, 80]) # x_vel, y_vel, z_vel 
+        Q_base_angle = np.array([40, 80, 80]) # roll, pitch, yaw 
+        Q_base_angle_rates = np.array([15, 50, 50]) # roll_rate, pitch_rate, yaw_rate 
+        # # ARM AUGMENTATION 
+        Q_q_arm = np.array([1,1,1]) 
+        Q_q_dot_arm = np.array([5,5,15]) 
+        Q_eef = np.diag(np.array([5, 15000, 5]))
 
         Q_com_position_z_integral = np.array([50])  # integral of z_com
         Q_com_velocity_x_integral = np.array([10])  # integral of x_com
@@ -592,6 +563,7 @@ class Arm_Augmented_MPC:
 
 
 
+        Q_foot_pos = np.array([300, 300, 300])  # f_x, f_y, f_z (should be 4 times this, once per foot)
 
         R_foot_vel = np.array([0.0001, 0.0001, 0.00001])  # v_x, v_y, v_z (should be 4 times this, once per foot)
         
@@ -600,6 +572,9 @@ class Arm_Augmented_MPC:
                 [0.00001, 0.00001, 0.00001])  # f_x, f_y, f_z (should be 4 times this, once per foot)
         else:
             R_foot_force = np.array([0.008, 0.008, 0.015]) # increase this?'
+
+
+        
 
         Q_mat = np.diag(np.concatenate((Q_position, Q_velocity,
                                         Q_base_angle, Q_base_angle_rates,
@@ -613,7 +588,44 @@ class Arm_Augmented_MPC:
         R_mat = np.diag(np.concatenate((R_foot_vel, R_foot_vel, R_foot_vel, R_foot_vel,
                                         R_foot_force, R_foot_force, R_foot_force, R_foot_force)))
 
-        return Q_mat, R_mat
+        return Q_mat, R_mat, Q_eef
+
+    def get_active_world_frame_eef_y_task(self, reference=None):
+        if reference is not None:
+            task_mode = reference.get("eef_task_mode")
+            if task_mode in self.world_frame_eef_y_task_names:
+                return task_mode
+
+        collaborative_task_params = getattr(config, "collaborative_task_params", {})
+        for task_name in self.world_frame_eef_y_task_names:
+            if collaborative_task_params.get(task_name, False):
+                return task_name
+        return None
+
+    def get_stage_eef_y_reference(self, reference, stage_idx):
+        if "ref_eef_y" not in reference:
+            return None
+
+        ref_eef_y = np.asarray(reference["ref_eef_y"])
+        if ref_eef_y.ndim == 0:
+            return float(ref_eef_y)
+
+        clipped_idx = min(stage_idx, ref_eef_y.shape[0] - 1)
+        return float(ref_eef_y[clipped_idx])
+
+    def build_eef_reference(self, state, reference, stage_idx=None):
+        current_eef = np.asarray(state["end_effector_position"], dtype=float)
+        ref_eef = current_eef.copy()
+
+        if self.get_active_world_frame_eef_y_task(reference) is not None:
+            ref_eef_y = self.get_stage_eef_y_reference(
+                reference,
+                self.horizon if stage_idx is None else stage_idx,
+            )
+            if ref_eef_y is not None:
+                ref_eef[1] = ref_eef_y
+
+        return ref_eef
 
     def reset(self):
         self.acados_ocp_solver.reset()
@@ -1141,7 +1153,8 @@ class Arm_Augmented_MPC:
         state["foot_RL"] = state["foot_RL"] - state["position"]
         state["foot_RR"] = state["foot_RR"] - state["position"]
         state["position"] = np.array([0, 0, 0])
-        state["end_effector_position"] = state["end_effector_position"] - state["position"]
+        # Keep the EEF state in world frame so the y-only tracking tasks are not base-centered.
+        state["end_effector_position"] = copy.deepcopy(state["end_effector_position"])
 
         return state, reference, constraint
 
@@ -1176,11 +1189,16 @@ class Arm_Augmented_MPC:
         arm_rest_position = reference['ref_arm_position']
         
         mass = 25.523 # this is the one out of adam
+        eef_tracking_active = self.get_active_world_frame_eef_y_task(reference) is not None
+        stage_W = self.W_with_eef_tracking if eef_tracking_active else self.W_without_eef_tracking
+        terminal_W = self.W_e_with_eef_tracking if eef_tracking_active else self.W_e_without_eef_tracking
         # print("Spring gains: ", k)
         # print("Damping gains: ", d)
         for j in range(self.horizon):
+            self.acados_ocp_solver.cost_set(j, "W", stage_W)
 
-            yref = np.zeros(shape=(self.states_dim + self.inputs_dim,))
+            yref = np.zeros(shape=(self.ocp.cost.yref.shape[0],))
+            eef_reference = self.build_eef_reference(state, reference, j)
 
             # yref[0:3] = reference['ref_position'][j]
             # yref[3:6] = reference['ref_linear_velocity'][j]
@@ -1248,23 +1266,19 @@ class Arm_Augmented_MPC:
             yref[53] = reference_force_fr_z
             yref[56] = reference_force_rl_z
             yref[59] = reference_force_rr_z
+            yref[-3:] = eef_reference
 
             # Setting the reference to acados
             if (self.use_DDP):
-                if (j == 0):
-                    num_l2_penalties = self.ocp.model.cost_y_expr_0.shape[0] - (self.states_dim + self.inputs_dim)
-                else:
-                    num_l2_penalties = self.ocp.model.cost_y_expr.shape[0] - (self.states_dim + self.inputs_dim)
-
-                yref_tot = np.concatenate((yref, np.zeros(num_l2_penalties, )))
-                self.acados_ocp_solver.set(j, "yref", yref_tot)
+                self.acados_ocp_solver.set(j, "yref", yref)
             else:
 
                 self.acados_ocp_solver.set(j, "yref", yref)
                 self.yref_save[j, :] = yref
 
         # Fill last step horizon reference (self.states_dim - no control action!!)
-        yref_N = np.zeros(shape=(self.states_dim,))
+        yref_N = np.zeros(shape=(self.ocp.cost.yref_e.shape[0],))
+        eef_reference_N = self.build_eef_reference(state, reference)
         # yref_N[0:3] = reference['ref_position'][24]
         # yref_N[3:6] = reference['ref_linear_velocity'][24]
         yref_N[0:3] = reference['ref_position']
@@ -1280,7 +1294,9 @@ class Arm_Augmented_MPC:
         ## ARM AUGMENTATION
         yref_N[30:33] = reference["ref_arm_position"]
         yref_N[33:36] = reference["ref_arm_velocity"]
+        yref_N[-3:] = eef_reference_N
         # Setting the reference to acados
+        self.acados_ocp_solver.cost_set(self.horizon, "W", terminal_W)
         self.acados_ocp_solver.set(self.horizon, "yref", yref_N)
         # Fill stance param, friction and stance proximity
         # (stance proximity will disable foothold optimization near a stance!!)
@@ -1354,8 +1370,8 @@ class Arm_Augmented_MPC:
                               stance_proximity_FR[j],
                               stance_proximity_RL[j],
                               stance_proximity_RR[j],
-                              state["position"][0], state["position"][1],
-                              state["position"][2], state["orientation"][2],
+                              self.initial_base_position[0], self.initial_base_position[1],
+                              self.initial_base_position[2], state["orientation"][2],
                               external_wrenches_estimated_param[0], external_wrenches_estimated_param[1],
                               external_wrenches_estimated_param[2], external_wrenches_estimated_param[3],
                               external_wrenches_estimated_param[4], external_wrenches_estimated_param[5],
@@ -1774,4 +1790,3 @@ class Arm_Augmented_MPC:
 
 
         return optimal_GRF, optimal_foothold, step_log,status, qp_time, niter
-

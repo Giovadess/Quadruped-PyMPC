@@ -1,5 +1,6 @@
 import copy
 import time
+import threading
 
 import numpy as np
 from gym_quadruped.utils.quadruped_utils import LegsAttr
@@ -129,6 +130,18 @@ class WBInterface:
         self._arm_stale_timeout = 0.15
         self._arm_deflection_threshold = np.deg2rad(5.0)
         self._wrench_decay_tau = 0.05
+        self.eef_task_lock = threading.Lock()
+        self.eef_task_command = {
+            "mode": "hold",
+            "amplitude": 0.0,
+            "frequency": 0.0,
+            "hold_time": 1.0,
+            "bias": 0.0,
+            "start_time": time.time(),
+            "anchor_y": 0.0,
+            "target_y": 0.0,
+        }
+        self.latest_eef_position = np.zeros(3)
 
     def _update_passive_arm_health(
         self,
@@ -168,6 +181,62 @@ class WBInterface:
         self._prev_arm_joint_pos = arm_joint_pos.copy()
         self._prev_arm_joint_vel = arm_joint_vel.copy()
         return self.passive_arm_state_valid
+
+    def configure_eef_task(
+        self,
+        mode: str,
+        current_eef_position: np.ndarray,
+        amplitude: float = 0.0,
+        frequency: float = 0.0,
+        hold_time: float = 1.0,
+        bias: float = 0.0,
+    ) -> None:
+        with self.eef_task_lock:
+            self.eef_task_command = {
+                "mode": mode,
+                "amplitude": float(amplitude),
+                "frequency": float(frequency),
+                "hold_time": max(float(hold_time), 1e-3),
+                "bias": float(bias),
+                "start_time": time.time(),
+                "anchor_y": float(current_eef_position[1]),
+                "target_y": float(current_eef_position[1] + bias),
+            }
+
+    def get_eef_task_command(self):
+        with self.eef_task_lock:
+            return copy.deepcopy(self.eef_task_command)
+
+    def build_eef_task_reference(self, current_eef_position: np.ndarray):
+        self.latest_eef_position = current_eef_position.copy()
+        task_command = self.get_eef_task_command()
+        mode = task_command["mode"]
+
+        if mode == "hold":
+            return "hold", current_eef_position.copy()
+
+        stage_times = np.arange(cfg.mpc_params['horizon'], dtype=float) * cfg.mpc_params['dt']
+        elapsed = time.time() - task_command["start_time"]
+        reference_times = elapsed + stage_times
+        base_y = task_command["anchor_y"] + task_command["bias"]
+
+        if mode == "sine":
+            ref_eef_y = base_y + 0.5 * task_command["amplitude"] * np.sin(
+                2.0 * np.pi * task_command["frequency"] * reference_times
+            )
+            return "eef_y_sine_tracking", ref_eef_y
+
+        if mode == "step":
+            step_phase = np.floor(reference_times / task_command["hold_time"]).astype(int)
+            step_sign = np.where(step_phase % 2 == 0, -1.0, 1.0)
+            ref_eef_y = base_y + task_command["amplitude"] * step_sign
+            return "eef_y_step_tracking", ref_eef_y
+
+        if mode == "target":
+            ref_eef_y = np.full((cfg.mpc_params['horizon'],), task_command["target_y"], dtype=float)
+            return "eef_y_step_tracking", ref_eef_y
+
+        return "hold", current_eef_position.copy()
 
 
     def update_state_and_reference(
@@ -237,6 +306,7 @@ class WBInterface:
             spring_gains=self.spring_gains,
             damping_gains=self.damping_gains,
         )
+        self.latest_eef_position = eef_position.copy()
 
 
         passive_arm_state_valid = self._update_passive_arm_health(
@@ -377,6 +447,10 @@ class WBInterface:
                 ref_arm_position=arm_joint_pos0,  #hard coded may need to update with rest position??
                 ref_arm_velocity=np.zeros(3),  #hard coded
             )
+            eef_task_mode, ref_eef_y = self.build_eef_task_reference(eef_position)
+            ref_state["eef_task_mode"] = eef_task_mode
+            if eef_task_mode != "hold":
+                ref_state["ref_eef_y"] = ref_eef_y
 
         # -------------------------------------------------------------------------------------------------
 
