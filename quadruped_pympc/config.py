@@ -191,7 +191,7 @@ mpc_params = {
 
     # 'arm_spring_gains':                       np.array([3.5,22, 33]),
     'arm_spring_gains':                       np.array([5, 8, 5]), 
-    'arm_damping_gains':                      np.array([0.5,0.5, 0.5]),
+    'arm_damping_gains':                      np.array([0.5,1.5, 0.5]),
 
     # ----- END properties for the sampling-based mpc -----
     }
@@ -201,8 +201,8 @@ simulation_params = {
     'swing_generator':             'scipy',  # 'scipy', 'explicit'
     'swing_position_gain_fb':      500,
     'swing_velocity_gain_fb':      10,
-    'impedence_joint_position_gain':  10.0,
-    'impedence_joint_velocity_gain':  2.0,
+    'impedence_joint_position_gain':  15.0,
+    'impedence_joint_velocity_gain':  12.0,
 
     'step_height':                 0.2 * hip_height,  
 

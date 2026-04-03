@@ -546,13 +546,14 @@ class Arm_Augmented_MPC:
 
 
         Q_position = np.array([50, 1200, 1000]) # x, y, z 
-        Q_velocity = np.array([20, 180, 80]) # x_vel, y_vel, z_vel 
-        Q_base_angle = np.array([40, 80, 80]) # roll, pitch, yaw 
-        Q_base_angle_rates = np.array([15, 50, 50]) # roll_rate, pitch_rate, yaw_rate 
+        Q_velocity = np.array([20, 200, 80]) # x_vel, y_vel, z_vel 
+
+        Q_base_angle = np.array([80, 150, 80]) # roll, pitch, yaw 
+        Q_base_angle_rates = np.array([15, 100, 50]) # roll_rate, pitch_rate, yaw_rate 
         # # ARM AUGMENTATION 
         Q_q_arm = np.array([1,1,1]) 
-        Q_q_dot_arm = np.array([5,5,15]) 
-        Q_eef = np.diag(np.array([5, 15000, 5]))
+        Q_q_dot_arm = np.array([15,15,15]) 
+        Q_eef = np.diag(np.array([5, 20000, 5]))
 
         Q_com_position_z_integral = np.array([50])  # integral of z_com
         Q_com_velocity_x_integral = np.array([10])  # integral of x_com

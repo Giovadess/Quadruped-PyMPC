@@ -792,7 +792,7 @@ class Quadruped_PyMPC_Node(Node):
         if "ref_eef_y" in ref_state:
             ref_eef_y = np.asarray(ref_state["ref_eef_y"]).flatten()
             if ref_eef_y.size > 0:
-                desired_eef_pos[1] = -1 * ref_eef_y[0]
+                desired_eef_pos[1] = ref_eef_y[0]
             task_mode = ref_state.get("eef_task_mode", "")
             if task_mode == "eef_y_sine_tracking":
                 zmp_msg.sin_traj = ref_eef_y.tolist()
@@ -826,3 +826,12 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+'''
+Notes on tracking experiments:
+- remember to add the mass to the model
+- fix the stance
+- com shift forward of 0.05
+'''
