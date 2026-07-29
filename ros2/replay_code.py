@@ -117,9 +117,12 @@ class Quadruped_PyMPC_Node(Node):
         self.publisher_time_debug_debug = self.create_publisher(TimeDebug,"/time_debug_db", 1)
         # Arm topic 
         self.subscriber_arm = self.create_subscription(JointState, '/passive_arm_joint_states',self.get_arm_interface_callback, 1)
+        self.subscription_recorded_zmp = self.create_subscription(
+            ZmpComputeMsg, "/zmp_topic", self.get_recorded_zmp_callback, 1
+        )
         # Arm interface publisher
         self.publisher_arm_interface_debug = self.create_publisher(PassiveArmState,"/mpc_arm_infos_db", 1)
-        self.publisher_zmp_msg = self.create_publisher(ZmpComputeMsg,"/zmp_topic",1)
+        # self.publisher_zmp_msg = self.create_publisher(ZmpComputeMsg,"/zmp_topic",1)
         self.rest_client = self.create_client(Trigger, 'set_rest_position')
         if(USE_SCHEDULER):
             self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_control_callback)
@@ -151,11 +154,14 @@ class Quadruped_PyMPC_Node(Node):
         self.arm_joint_pos = np.zeros(3)
         self.arm_joint_vel = np.zeros(3)
         self.external_wrenches = np.zeros(6)
+        self.recorded_eef_pos = None
+        self.recorded_eef_pos_desired = None
 
         self.zmp = np.zeros(3)
         self.arm_joint_pos0 = np.zeros(3)
 
         self.compute_control_callback_counter = 0
+        self.replay_elapsed_time = 0.0
 
         # Mujoco env
         self.env = QuadrupedEnv(
@@ -170,6 +176,8 @@ class Quadruped_PyMPC_Node(Node):
         self.legs_order = ["FL", "FR", "RL", "RR"]
         self.env.reset(random=False)
         self.last_mpc_time = time.time()
+        self.eef_site_id = mujoco.mj_name2id(self.env.mjModel, mujoco.mjtObj.mjOBJ_SITE, 'eef')
+        self.replay_prediction_log_path = "mpc_tracking_prediction_log.json"
 
 
         # Quadruped PyMPC controller initialization -------------------------------------------------------------
@@ -256,6 +264,105 @@ class Quadruped_PyMPC_Node(Node):
         #    self.wb_interface.stc.velocity_gain_fb = 10
         #    self.wb_interface.stc.use_feedback_linearization = False
         #    self.wb_interface.stc.use_friction_compensation = False
+
+    @staticmethod
+    def _rpy_to_quat_wxyz(roll: float, pitch: float, yaw: float) -> np.ndarray:
+        cy = np.cos(yaw * 0.5)
+        sy = np.sin(yaw * 0.5)
+        cp = np.cos(pitch * 0.5)
+        sp = np.sin(pitch * 0.5)
+        cr = np.cos(roll * 0.5)
+        sr = np.sin(roll * 0.5)
+        qw = cr * cp * cy + sr * sp * sy
+        qx = sr * cp * cy - cr * sp * sy
+        qy = cr * sp * cy + sr * cp * sy
+        qz = cr * cp * sy - sr * sp * cy
+        return np.array([qw, qx, qy, qz], dtype=float)
+
+    @staticmethod
+    def _to_serializable(obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.generic):
+            return obj.item()
+        if isinstance(obj, dict):
+            return {key: Quadruped_PyMPC_Node._to_serializable(value) for key, value in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [Quadruped_PyMPC_Node._to_serializable(value) for value in obj]
+        return obj
+
+    def _build_desired_eef_position(self, ref_state: dict, current_eef_pos: np.ndarray) -> np.ndarray:
+        desired_eef_pos = np.array(current_eef_pos, dtype=float).copy()
+        if not isinstance(ref_state, dict):
+            return desired_eef_pos
+
+        if "ref_eef_y" in ref_state:
+            ref_eef_y = np.asarray(ref_state["ref_eef_y"]).reshape(-1)
+            if ref_eef_y.size > 0:
+                desired_eef_pos[1] = float(ref_eef_y[0])
+
+        if "ref_eef_x" in ref_state:
+            ref_eef_x = np.asarray(ref_state["ref_eef_x"]).reshape(-1)
+            if ref_eef_x.size > 0:
+                desired_eef_pos[0] = float(ref_eef_x[0])
+
+        if "ref_eef_z" in ref_state:
+            ref_eef_z = np.asarray(ref_state["ref_eef_z"]).reshape(-1)
+            if ref_eef_z.size > 0:
+                desired_eef_pos[2] = float(ref_eef_z[0])
+        elif "ref_eef_height" in ref_state:
+            ref_eef_height = np.asarray(ref_state["ref_eef_height"]).reshape(-1)
+            if ref_eef_height.size > 0:
+                desired_eef_pos[2] = float(ref_eef_height[0])
+
+        return desired_eef_pos
+
+    def _compute_predicted_eef_horizon(self,
+                                       predicted_state: dict,
+                                       state_position_world: np.ndarray,
+                                       base_pos_world: np.ndarray) -> tuple[np.ndarray | None, np.ndarray | None]:
+        if not isinstance(predicted_state, dict) or "x_pred" not in predicted_state:
+            return None, None
+
+        x_pred = np.asarray(predicted_state["x_pred"], dtype=float)
+        if x_pred.ndim != 2 or x_pred.shape[1] < 33:
+            return None, None
+
+        # The centroidal state stores CoM-like position in a base-centered frame.
+        # Reconstruct the world-frame base position with the current base-to-state offset.
+        base_minus_state_offset = np.asarray(base_pos_world, dtype=float) - np.asarray(state_position_world, dtype=float)
+        arm_start_idx = 7 + 12
+
+        predicted_eef_horizon = []
+        predicted_qpos_horizon = []
+        qvel_zero = np.zeros_like(self.env._ghost_mjData.qvel)
+
+        for x_i in x_pred:
+            predicted_state_world = np.asarray(state_position_world, dtype=float) + x_i[0:3]
+            predicted_base_world = predicted_state_world + base_minus_state_offset
+
+            qpos = self.env.mjData.qpos.copy()
+            qpos[0:3] = predicted_base_world
+            qpos[3:7] = self._rpy_to_quat_wxyz(x_i[6], x_i[7], x_i[8])
+            qpos[arm_start_idx:arm_start_idx + 3] = x_i[30:33]
+
+            self.env._ghost_mjData.qpos[:] = qpos
+            self.env._ghost_mjData.qvel[:] = qvel_zero
+            mujoco.mj_forward(self.env.mjModel, self.env._ghost_mjData)
+
+            predicted_qpos_horizon.append(qpos.copy())
+            predicted_eef_horizon.append(self.env._ghost_mjData.site_xpos[self.eef_site_id].copy())
+
+        return np.asarray(predicted_eef_horizon), np.asarray(predicted_qpos_horizon)
+
+    def save_replay_prediction_log(self):
+        if not self.log:
+            return
+
+        with open(self.replay_prediction_log_path, 'w') as f:
+            json.dump(self._to_serializable(self.log), f, indent=2)
+
+        print(f"Saved replay prediction log to {self.replay_prediction_log_path}")
 
 
     def compute_mpc_thread_callback(self):
@@ -472,6 +579,10 @@ class Quadruped_PyMPC_Node(Node):
         self.arm_joint_pos0 = np.zeros(3)
         self.arm_joint_vel = np.zeros(3)
 
+    def get_recorded_zmp_callback(self, msg):
+        self.recorded_eef_pos = np.asarray(msg.eef_pos, dtype=float).copy()
+        self.recorded_eef_pos_desired = np.asarray(msg.eef_pos_desired, dtype=float).copy()
+
 
 
     def compute_control_callback(self):
@@ -489,6 +600,7 @@ class Quadruped_PyMPC_Node(Node):
             if(USE_SATURATED_LOOP_TIME):
                 if(simulation_dt > 0.005):
                     simulation_dt = 0.005
+        self.replay_elapsed_time += simulation_dt
 
         # Safety check to not do anything until a first base and blind state are received
         if(self.first_message_base_arrived==False and self.first_message_joints_arrived==False):
@@ -597,6 +709,8 @@ class Quadruped_PyMPC_Node(Node):
                                                 arm_joint_pos0
                                                 
                                                 )
+
+        desired_eef_pos = self._build_desired_eef_position(ref_state, eef_pos)
 
         
 
@@ -782,26 +896,27 @@ class Quadruped_PyMPC_Node(Node):
         # print("contact_state:", contact_state)
 
         
-        # ### ZMP MESSAGE
-        zmp_msg = ZmpComputeMsg()
-        zmp_msg.com_pos = base_pos
-        # zmp_msg.com_acc = 100
-        zmp_msg.com_ori = base_ori_euler_xyz
-        zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
-        zmp_msg.eef_pos = eef_pos
-        zmp_msg.zmp = zmp
-        zmp_msg.zmp_margin = [zmp_margin]
-        # Fill the zmp message with the grfs-z desired by the mpc on z
-        zmp_msg.nmpc_grfs=[self.nmpc_GRFs['FL'][2],
-                           self.nmpc_GRFs['RL'][2],
-                           self.nmpc_GRFs['RL'][2],
-                           self.nmpc_GRFs['RR'][2]]
-        ### Add contact debug as well
-        zmp_msg.contact = contact_sequence_des
-        # zmp_msg.footholds = self.nmpc_footholds
-        # zmp_msg.contact =  self.contact_sequence
-        # zmp_msg.nmpc_grfs = self.nmpc_GRFs
-        self.publisher_zmp_msg.publish(zmp_msg)
+        # # ### ZMP MESSAGE
+        # zmp_msg = ZmpComputeMsg()
+        # zmp_msg.com_pos = base_pos
+        # # zmp_msg.com_acc = 100
+        # zmp_msg.com_ori = base_ori_euler_xyz
+        # zmp_msg.arm_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
+        # zmp_msg.eef_pos = eef_pos
+        # zmp_msg.eef_pos_desired = desired_eef_pos
+        # zmp_msg.zmp = zmp
+        # zmp_msg.zmp_margin = [zmp_margin]
+        # # Fill the zmp message with the grfs-z desired by the mpc on z
+        # zmp_msg.nmpc_grfs=[self.nmpc_GRFs['FL'][2],
+        #                    self.nmpc_GRFs['RL'][2],
+        #                    self.nmpc_GRFs['RL'][2],
+        #                    self.nmpc_GRFs['RR'][2]]
+        # ### Add contact debug as well
+        # zmp_msg.contact = contact_sequence_des
+        # # zmp_msg.footholds = self.nmpc_footholds
+        # # zmp_msg.contact =  self.contact_sequence
+        # # zmp_msg.nmpc_grfs = self.nmpc_GRFs
+        # self.publisher_zmp_msg.publish(zmp_msg)
         # print("mujoco eef pos:", eef_pos)
 
         ## Logging data for replay --------------------------------------------------------------------------------
@@ -819,7 +934,31 @@ class Quadruped_PyMPC_Node(Node):
         #     "sumFz_pred": sumFz_pred,
         #     "solver_status": status,
         # }
-        self.log.append(self.nmpc_predicted_state)
+        predicted_eef_horizon, predicted_qpos_horizon = self._compute_predicted_eef_horizon(
+            predicted_state=self.nmpc_predicted_state,
+            state_position_world=state_current["position"],
+            base_pos_world=base_pos,
+        )
+
+        replay_log_entry = {}
+        if isinstance(self.nmpc_predicted_state, dict):
+            replay_log_entry.update(copy.deepcopy(self.nmpc_predicted_state))
+        else:
+            replay_log_entry["predicted_state_raw"] = copy.deepcopy(self.nmpc_predicted_state)
+
+        replay_log_entry["replay_time"] = float(self.replay_elapsed_time)
+        replay_log_entry["eef_pos_current"] = np.asarray(eef_pos, dtype=float)
+        replay_log_entry["eef_pos_desired"] = np.asarray(desired_eef_pos, dtype=float)
+        if self.recorded_eef_pos is not None:
+            replay_log_entry["bag_eef_pos_current"] = np.asarray(self.recorded_eef_pos, dtype=float)
+        if self.recorded_eef_pos_desired is not None:
+            replay_log_entry["bag_eef_pos_desired"] = np.asarray(self.recorded_eef_pos_desired, dtype=float)
+        replay_log_entry["base_pos_world"] = np.asarray(base_pos, dtype=float)
+        replay_log_entry["state_position_world"] = np.asarray(state_current["position"], dtype=float)
+        replay_log_entry["predicted_eef_horizon"] = predicted_eef_horizon if predicted_eef_horizon is not None else []
+        replay_log_entry["predicted_qpos_horizon"] = predicted_qpos_horizon if predicted_qpos_horizon is not None else []
+
+        self.log.append(replay_log_entry)
         # print(self.log[-1]["solver_status"]==3)
         ## Now to the log I want to add: state_current, ref_state, contact_sequence, nmpc_GRFs, nmpc_footholds, qp_time, niter
 
@@ -830,18 +969,8 @@ class Quadruped_PyMPC_Node(Node):
                 # Save the log to a JSON file at the end of the simulation
             #take only the last 20 logs
             self.log = self.log[-20:]
-            # change to a serializable format
-            # su_i and su_l are numpy arrays so we need to convert them to lists
-            for log_entry in self.log:
-                if isinstance(log_entry, dict):
-                    for key in log_entry:
-                        if isinstance(log_entry[key], np.ndarray):
-                            log_entry[key] = log_entry[key].tolist()
-
-            #### 
-            # print("log entry shape:", self.log[-1])
             with open('mpc_log_armpc.json', 'w') as f:
-                json.dump(self.log, f, indent=4)
+                json.dump(self._to_serializable(self.log), f, indent=4)
             # breakpoint()
 
 
@@ -857,15 +986,14 @@ def main():
     rclpy.init()
 
     controller_node = Quadruped_PyMPC_Node()
-
-    rclpy.spin(controller_node)
-
-
-
-    controller_node.destroy_node()
-
-        
-    rclpy.shutdown()
+    try:
+        rclpy.spin(controller_node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        controller_node.save_replay_prediction_log()
+        controller_node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
