@@ -1,5 +1,13 @@
-# Description: This file contains the class Centroidal_Model that defines the
-# prediction model used by the MPC
+# Description: PACC-comp prediction model -- same SRBD/gait/ZMP/cost
+# machinery as controllers/arm_augmented_mpc, but WITHOUT the base<->arm
+# Schur-complement augmentation: the passive arm's own dynamics are still
+# predicted (for state tracking/logging parity) but never feed into the base
+# equations. Instead, the estimated end-effector wrench is compensated
+# directly in the base equation, matching the paper's Nominal-controller
+# treatment. Kept as a separate, independently-compiled controller (rather
+# than a runtime flag inside arm_augmented_mpc) so switching between ARMPC
+# and this baseline at experiment time is just a config edit -- neither
+# needs recompiling, and neither's c_generated_code can affect the other.
 
 # Authors: Giulio Turrisi -
 
@@ -34,7 +42,7 @@ import pinocchio.casadi as cpin
  
 
 # Class that defines the prediction model of the NMPC
-class Arm_Augmented_Centroidal_Model:
+class Pacc_Comp_Centroidal_Model:
     def __init__(self,) -> None: 
 
 
@@ -385,37 +393,22 @@ class Arm_Augmented_Centroidal_Model:
             com_position, base_quat, joint_position_update
         )
 
-        # Full 9-DOF (6 base + 3 arm) coupled dynamics, solved exactly via
-        # a Schur-complement reduction instead of a dense 9x9 factorization:
-        # one 3x3 solve against the arm block M_s (reused for both the
-        # coupling columns and the rhs), then one 6x6 solve against the
-        # Schur-reduced base block. This keeps the full bidirectional
-        # coupling (M_bs: arm inertia reacts on the base; M_sb: base
-        # acceleration excites the arm) at roughly the cost of the old
-        # one-way approximation, which solved M_s alone (implicitly
-        # assuming zero base acceleration) and only injected M_bs @ q_ddot_arm
-        # into the base equation, dropping the M_sb @ a_base term entirely.
-        #
-        # M_arm/M_base_arm/B_arm/inertia below come from Pinocchio's
-        # CRBA/RNEA on full_joint_pos_update/full_vel, whose floating-base
-        # convention expresses both linear and angular base velocity in the
-        # BASE/local frame (see base_linear_velocity below). The coupled
-        # solve is therefore carried out entirely in base frame; only the
-        # final linear acceleration is rotated back to world frame to match
-        # the (world-frame) com_velocity/com_position state convention.
-        # The previous version summed the base-frame tau_base_arm directly
-        # into the world-frame contact_force_world (no rotation), and for
-        # the angular part let it be rotated a second time by the
-        # `b_R_w @ contact_moment_world` line below -- both were frame
-        # bugs, fixed here by keeping everything in base frame until the
-        # final rotation-back of the linear term.
+        # PACC-COMP: no base<->arm augmentation. The arm's own passive
+        # spring/damping/gravity dynamics are still predicted (q_ddot_arm
+        # below, from the arm-only block M_arm/B_arm of the full CRBA/RNEA
+        # mass matrix/bias) purely so its state is tracked/logged the same
+        # way as ARMPC's, but it does NOT feed into or receive from the base
+        # equations at all -- that's the deliberate difference from
+        # controllers/arm_augmented_mpc/ (see Pacc_Comp_Centroidal_Model
+        # docstring/class comment). Instead, the estimated end-effector
+        # wrench is compensated directly in the base equation below, matching
+        # the paper's Nominal-controller treatment.
         base_linear_velocity = b_R_w @ com_velocity
         self.full_vel = cs.vertcat(base_linear_velocity, omega, joint_vel)
         mass_matrix = self.M_fun(self.full_joint_pos_update)
         bias = self.h_fun(self.full_joint_pos_update, self.full_vel)
-        M_arm = mass_matrix[18:21, 18:21]      # M_s   (3x3)
-        M_base_arm = mass_matrix[0:6, 18:21]   # M_bs  (6x3); M_sb = M_base_arm.T (M symmetric)
-        B_arm = bias[18:21]                    # h_s   (3x1)
+        M_arm = mass_matrix[18:21, 18:21]      # M_s (3x3), arm's own inertia block
+        B_arm = bias[18:21]                    # h_s (3x1)
         inertia = mass_matrix[3:6, 3:6]        # base angular block (3x3)
         self.mass = mass_matrix[0, 0]          # total mass (scalar)
 
@@ -466,68 +459,26 @@ class Arm_Augmented_Centroidal_Model:
             @ foot_force_rr @ stanceRR
         )
 
-
-
-
-
-        # FINAL angular_acc_base STATE (4)
-
-
-
-        ##################################################
-
+        # Estimated end-effector wrench (world frame -- see
+        # Passive_Arm_Interface.calculate_force_estimates_damping, which
+        # rotates into world via rot_B_to_W before publishing), compensated
+        # unconditionally here (this controller's whole point is to react to
+        # it directly, unlike ARMPC which predicts it implicitly through the
+        # arm's own dynamics).
+        external_wrench = param[13:19]
 
         q_arm_rest = param[25:28]
-        rs = (
-            -B_arm
-            - cs.diag(k) @ (q_arm - q_arm_rest)
-            - cs.diag(d) @ q_dot_arm
-        )
-        # NOTE on the arm end-effector external-force term (the paper's
-        # "-J_s^T f_e" in eq. 12 of the augmented-dynamics derivation):
-        # intentionally NOT included here yet. It would need a raw 3D
-        # end-effector force expressed in the same LOCAL_WORLD_ALIGNED
-        # frame as jac_arm_fun's Jacobian, which is not currently plumbed
-        # as an acados parameter -- the existing `external_wrench` param is
-        # a 6D wrench already resolved at the base/CoM by
-        # passive_arm_interface.py (skew(p_ee) @ f_ee), not compatible with
-        # a direct J_s^T multiplication in the arm's own generalized
-        # coordinates. Also flagging: if/when this term is added, the
-        # correct sign looks to be +J_s^T f_e, matching PACC eq. 5/6's
-        # convention, under which the existing force estimator is
-        # self-consistently derived (J_ee^T f_hat_ee = -(tau_g+tau_s+tau_d)
-        # at quasi-static equilibrium) -- not "-J_s^T f_e" as literally
-        # written in eq. 12, which appears to be an inconsistent sign
-        # relative to both the PACC estimator and this paper's own
-        # ZMP section (f_ext enters f = m_tot(g - a_com) + f_ext with a "+").
-
-        # Base "own" operator (M_b), block-diagonal in mass/inertia as in
-        # the original reduced-order model, expressed in BASE frame to
-        # match M_arm/M_base_arm's Pinocchio convention.
-        Mb = cs.diagcat(self.mass * cs.SX.eye(3), inertia)
-
-        F_grf_base = b_R_w @ contact_force_world
-        M_grf_base = b_R_w @ contact_moment_world
-        rb = cs.vertcat(
-            F_grf_base + self.mass * (b_R_w @ gravity),
-            M_grf_base - cs.skew(omega) @ inertia @ omega,
+        q_ddot_arm = cs.solve(
+            M_arm,
+            -B_arm - cs.diag(k) @ (q_arm - q_arm_rest) - cs.diag(d) @ q_dot_arm,
         )
 
-        # Schur complement: one 3x3 factorization of M_arm, reused (via
-        # multi-RHS solve) for both the M_sb coupling columns and rs.
-        rhs_arm = cs.horzcat(M_base_arm.T, rs)      # [M_sb | rs], (3x7)
-        sol_arm = cs.solve(M_arm, rhs_arm)          # M_s^-1 [M_sb | rs]
-        Ms_inv_Msb = sol_arm[:, 0:6]                # M_s^-1 M_sb, (3x6)
-        Ms_inv_rs = sol_arm[:, 6:7]                 # M_s^-1 rs,   (3x1)
-
-        S = Mb - M_base_arm @ Ms_inv_Msb            # Schur complement (6x6)
-        rhs_base = rb - M_base_arm @ Ms_inv_rs
-        base_acc = cs.solve(S, rhs_base)            # [a_lin; alpha], BASE frame
-
-        q_ddot_arm = Ms_inv_rs - Ms_inv_Msb @ base_acc
-
-        linear_com_acc = b_R_w.T @ base_acc[0:3]    # rotate back to world frame
-        angular_acc_base = base_acc[3:6]            # already base frame, matches `omega`
+        linear_com_acc = (contact_force_world + external_wrench[0:3]) / self.mass + gravity
+        angular_acc_base = cs.solve(
+            inertia,
+            b_R_w @ (contact_moment_world + external_wrench[3:6])
+            - cs.skew(omega) @ inertia @ omega,
+        )
 
 
 
@@ -596,7 +547,7 @@ class Arm_Augmented_Centroidal_Model:
         acados_model.xdot = self.states_dot
         acados_model.u = self.inputs
         acados_model.p = self.param
-        acados_model.name = "arm_augmented_centroidal_model"
+        acados_model.name = "pacc_comp_centroidal_model"
 
 
 

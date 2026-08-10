@@ -326,10 +326,10 @@ class Console():
                             self.controller_node.env._ref_base_lin_vel_H[1] -= 0.05
                             print("d")
                         elif(command == "q"):
-                            self.controller_node.env._ref_base_ang_yaw_dot += 0.1
+                            self.controller_node.env._ref_base_ang_yaw_dot += 0.05
                             print("q")
                         elif(command == "e"):
-                            self.controller_node.env._ref_base_ang_yaw_dot -= 0.1
+                            self.controller_node.env._ref_base_ang_yaw_dot -= 0.05
                             print("e")
                         elif(command == "0"):
                             self.controller_node.env._ref_base_lin_vel_H[0] = 0

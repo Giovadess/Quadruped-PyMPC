@@ -3,6 +3,7 @@ from rclpy.node import Node
 from dls2_interface.msg import BaseState, BlindState, ControlSignal, TrajectoryGenerator, TimeDebug, PassiveArmState, ZmpComputeMsg
 from sensor_msgs.msg import Joy
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64
 
 import time
 import numpy as np
@@ -10,6 +11,7 @@ np.set_printoptions(precision=3, suppress=True)
 
 import threading
 import multiprocessing
+import queue
 from multiprocessing import shared_memory, Value
 
 import copy
@@ -100,6 +102,15 @@ USE_FIXED_LOOP_TIME = False # This is used to fix the clock time of periodic gai
 USE_SATURATED_LOOP_TIME = True # This is used to cap the clock time of periodic gait gen to max 250Hz
 
 USE_SMOOTH_VELOCITY = False
+
+# Live pull-release reference for PlotJuggler: fixed target lines for the
+# third arm joint (index 2) angle and the estimated end-effector force
+# magnitude, plotted alongside their live values, so both can be watched
+# live instead of only recovered after the fact from a bag. See
+# ros2/postprocess_bag.py for the offline equivalents.
+ARM_JOINT3_TARGET_RAD = -0.7
+ARM_JOINT1_TARGET_RAD = -0.2  # combined yaw-x testing: flip the sign when switching left<->right pulls
+FORCE_MAGNITUDE_TARGET_N = 30.0  # midpoint of the ~25-35N band ARMPC held up against loaded
 USE_SMOOTH_HEIGHT = True
 
 # Shell for the controllers ----------------------------------------------
@@ -119,6 +130,11 @@ class Quadruped_PyMPC_Node(Node):
         # Arm interface publisher
         self.publisher_arm_interface = self.create_publisher(PassiveArmState,"/mpc_arm_infos", 1)
         self.publisher_zmp_msg = self.create_publisher(ZmpComputeMsg,"/zmp_topic",1)
+        # Live pull-release monitoring: fixed joint1/joint3/force target lines + estimated force magnitude
+        self.publisher_arm_joint1_target = self.create_publisher(Float64, "/arm_joint1_target", 1)
+        self.publisher_arm_joint3_target = self.create_publisher(Float64, "/arm_joint3_target", 1)
+        self.publisher_force_magnitude = self.create_publisher(Float64, "/estimated_force_magnitude", 1)
+        self.publisher_force_magnitude_target = self.create_publisher(Float64, "/force_magnitude_target", 1)
         self.rest_client = self.create_client(Trigger, 'set_rest_position')
         if(USE_SCHEDULER):
             self.timer = self.create_timer(1.0/SCHEDULER_FREQ, self.compute_control_callback)
@@ -395,7 +411,6 @@ class Quadruped_PyMPC_Node(Node):
                 last_mpc_process_time = time.time()
 
     def get_base_state_callback(self, msg):
-        
         if(USE_SMOOTH_HEIGHT):
             # Smooth the height of the base
             self.position[2] = 0.5*self.position[2] + 0.5*np.array(msg.pose.position)[2]
@@ -466,8 +481,6 @@ class Quadruped_PyMPC_Node(Node):
         self.arm_joint_pos0 = np.array(msg.position[3:], dtype=float).copy()
         self.arm_joint_vel=np.array(msg.velocity, dtype=float).copy()
         # print("arm joint pos callback:", self.arm_joint_pos)
-        self.arm_joint_pos[2]= -self.arm_joint_pos[2] # I need to switch the sign of joint 3 to match the real robot convention
-        self.arm_joint_vel[2]= -self.arm_joint_vel[2] # I need to switch the sign of joint 3 to match the real robot convention
 
         # self.arm_joint_pos[1]= -self.arm_joint_pos[1] # I need to switch the sign of joint 3 to match the real robot convention
         # self.arm_joint_vel[1]= -self.arm_joint_vel[1] # I need to switch the sign of joint 3 to match the real robot convention
@@ -630,8 +643,22 @@ class Quadruped_PyMPC_Node(Node):
                 self.last_mpc_loop_time = data[7]
         
         elif(USE_PROCESS_SHARED_MEMORY_MPC):
-            if(not self.input_data_process.full()):
-                self.input_data_process.put_nowait([state_current, ref_state, contact_sequence, inertia, optimize_swing, self.wb_interface.pgg.phase_signal, self.wb_interface.pgg.step_freq])
+            latest_mpc_input = [state_current, ref_state, contact_sequence, inertia,
+                                optimize_swing, self.wb_interface.pgg.phase_signal,
+                                self.wb_interface.pgg.step_freq]
+            try:
+                self.input_data_process.put_nowait(latest_mpc_input)
+            except queue.Full:
+                # Drop the oldest unprocessed snapshot; MPC should always solve
+                # from the freshest state available after its previous solve.
+                try:
+                    self.input_data_process.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self.input_data_process.put_nowait(latest_mpc_input)
+                except queue.Full:
+                    pass
             
             # Read MPC output from shared memory with seqlock and stale-data guard
             if self.shm_out is not None and self.seq_out is not None:
@@ -737,6 +764,12 @@ class Quadruped_PyMPC_Node(Node):
         trajectory_generator_msg.joints_velocity = np.concatenate([pd_target_joints_vel.FL, pd_target_joints_vel.FR, pd_target_joints_vel.RL, pd_target_joints_vel.RR], axis=0).flatten().tolist()
         trajectory_generator_msg.kp = (self.impedence_joint_position_gain).tolist()
         trajectory_generator_msg.kd = (self.impedence_joint_velocity_gain).tolist()
+        # Resolved reference base velocity (world frame), driven by the joystick
+        # callback (get_joy_callback) via env._ref_base_lin_vel_H/_ref_base_ang_yaw_dot.
+        # Logged here since /joy itself isn't recorded in the bags, so runs can be
+        # told apart from operator-commanded corrections after the fact.
+        trajectory_generator_msg.com_vel.linear = np.asarray(ref_base_lin_vel, dtype=float).tolist()
+        trajectory_generator_msg.com_vel.angular = np.asarray(ref_base_ang_vel, dtype=float).tolist()
         self.publisher_trajectory_generator.publish(trajectory_generator_msg)
 
         time_debug_msg = TimeDebug()
@@ -753,6 +786,23 @@ class Quadruped_PyMPC_Node(Node):
         passive_arm_msg.passive_arm_external_wrenches = np.concatenate([state_current['wrench_estimated']], axis=0).flatten()
         passive_arm_msg.passive_arm_eef_position = eef_pos
         self.publisher_arm_interface.publish(passive_arm_msg)
+
+        # Live pull-release monitoring: fixed target lines for joint1/joint3 + force magnitude
+        joint1_target_msg = Float64()
+        joint1_target_msg.data = ARM_JOINT1_TARGET_RAD
+        self.publisher_arm_joint1_target.publish(joint1_target_msg)
+
+        target_msg = Float64()
+        target_msg.data = ARM_JOINT3_TARGET_RAD
+        self.publisher_arm_joint3_target.publish(target_msg)
+
+        force_mag_msg = Float64()
+        force_mag_msg.data = float(np.linalg.norm(state_current['wrench_estimated'][0:3]))
+        self.publisher_force_magnitude.publish(force_mag_msg)
+
+        force_target_msg = Float64()
+        force_target_msg.data = FORCE_MAGNITUDE_TARGET_N
+        self.publisher_force_magnitude_target.publish(force_target_msg)
 
 
 

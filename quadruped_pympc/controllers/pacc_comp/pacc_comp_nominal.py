@@ -6,7 +6,7 @@ from quadruped_pympc.acados.interfaces.acados_template.acados_template import ac
 # Authors: Giulio Turrisi - 
 
 from acados_template import AcadosOcp, AcadosOcpSolver
-from .arm_augmented_mpc_nominal_model import Arm_Augmented_Centroidal_Model
+from .pacc_comp_model import Pacc_Comp_Centroidal_Model
 import numpy as np
 import scipy.linalg
 import casadi as cs
@@ -16,7 +16,12 @@ import quadruped_pympc.config as config
 import time
 
 # Class for the Acados NMPC, the model is in another file!
-class Arm_Augmented_MPC:
+# PACC-comp: same controller machinery as Arm_Augmented_MPC, but built from
+# Pacc_Comp_Centroidal_Model (no base<->arm augmentation, wrench compensated
+# directly instead) -- see that model's docstring. Deliberately its own
+# class/module/c_generated_code, not a flag on Arm_Augmented_MPC, so
+# switching controllers at experiment time never needs a rebuild of either.
+class Pacc_Comp_MPC:
     def __init__(self):
 
         self.horizon = config.mpc_params['horizon']  # Define the number of discretization steps
@@ -44,7 +49,7 @@ class Arm_Augmented_MPC:
         self.initial_base_position = np.array([0, 0, 0])
 
         # Create the class of the centroidal model and instantiate the acados model
-        self.centroidal_model = Arm_Augmented_Centroidal_Model()
+        self.centroidal_model = Pacc_Comp_Centroidal_Model()
         acados_model = self.centroidal_model.export_robot_model()
         self.states_dim = acados_model.x.size()[0]
         self.inputs_dim = acados_model.u.size()[0]
@@ -57,15 +62,18 @@ class Arm_Augmented_MPC:
         code_export_dir = pathlib.Path(__file__).parent / 'c_generated_code'
         self.ocp.code_export_directory = str(code_export_dir)
 
-
-
-
-
-        if ((not self.ocp.code_export_directory) or self.ocp.code_export_directory == []):
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json",build = True, generate = True)
- 
-        else :
-           self.acados_ocp_solver =  AcadosOcpSolver(self.ocp, json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" + ".json", build = False, generate = False)
+        # Unlike arm_augmented_mpc_nominal.py's always-skip check (a known
+        # bug there -- code_export_directory is set to a non-empty string
+        # right above, so its "if not code_export_directory" is always
+        # False), this actually checks whether a build exists: first run
+        # here generates+compiles once, every run after reuses it. Delete
+        # c_generated_code/ to force a rebuild after changing this model.
+        needs_build = (not code_export_dir.is_dir()) or (not any(code_export_dir.iterdir()))
+        self.acados_ocp_solver = AcadosOcpSolver(
+            self.ocp,
+            json_file=self.ocp.code_export_directory + "/pacc_comp_centroidal_nmpc" + ".json",
+            build=needs_build, generate=needs_build,
+        )
         
         # Initialize solver
         for stage in range(self.horizon + 1):
@@ -618,7 +626,7 @@ class Arm_Augmented_MPC:
     def reset(self):
         self.acados_ocp_solver.reset()
         self.acados_ocp_solver = AcadosOcpSolver(self.ocp,
-                                                 json_file=self.ocp.code_export_directory + "/arm_augmented_centroidal_nmpc" +
+                                                 json_file=self.ocp.code_export_directory + "/pacc_comp_centroidal_nmpc" +
                                                            ".json",
                                                  build=False, generate=False)
 
@@ -1341,11 +1349,12 @@ class Arm_Augmented_MPC:
             #     external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
             # else:
             #     external_wrenches_estimated_param = np.zeros((6,))
-            if (config.mpc_params['passive_arm_compensation']):
-                external_wrenches_estimated_param = copy.deepcopy(state['wrench_estimated'])
-                external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
-            else:
-                external_wrenches_estimated_param = np.zeros((6,))
+            # Unconditional -- unlike Arm_Augmented_MPC (gated on
+            # config.mpc_params['passive_arm_compensation']), this
+            # controller's entire purpose is to compensate the estimated
+            # wrench directly, so it doesn't depend on that flag.
+            external_wrenches_estimated_param = copy.deepcopy(state['wrench_estimated'])
+            external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6,))
 
             param = np.array([FL_contact_sequence[j], FR_contact_sequence[j],
                               RL_contact_sequence[j], RR_contact_sequence[j],

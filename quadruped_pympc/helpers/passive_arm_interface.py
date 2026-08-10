@@ -110,7 +110,15 @@ class Passive_Arm_Interface:
         '''
         # breakpoint()
         #FOLLOWER CONFIGURATION
+        # NOTE: operate on a local copy -- q is the same array object as
+        # calling code's arm_joint_pos (e.g. calculate_force_estimates_damping's
+        # shared arm_joint_pos, called before updatePeeBarm/updateSpringTorque/
+        # updateGravityTorque on that same call). Mutating q in place here was
+        # silently flipping joint 3's sign for every downstream computation in
+        # that same call, corrupting the spring torque and hence the force
+        # estimate's sign. This correction is needed for the Jacobian only.
         if self.robot == 'aliengo_follower':
+            q = q.copy()
             q[0]=q[0]
             q[1]=abs(q[1])
             q[2]=-q[2]

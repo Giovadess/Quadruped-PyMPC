@@ -84,6 +84,9 @@ class SRBDControllerInterface:
         elif self.type == "arm_mpc":
             from quadruped_pympc.controllers.arm_augmented_mpc.arm_augmented_mpc_nominal import Arm_Augmented_MPC
             self.controller = Arm_Augmented_MPC()
+        elif self.type == "pacc-comp":
+            from quadruped_pympc.controllers.pacc_comp.pacc_comp_nominal import Pacc_Comp_MPC
+            self.controller = Pacc_Comp_MPC()
     def compute_control(
         self,
         state_current: dict,
@@ -207,7 +210,7 @@ class SRBDControllerInterface:
                 nmpc_joints_acc = LegsAttr(
                     FL=nmpc_joints_acc[0:3], FR=nmpc_joints_acc[3:6], RL=nmpc_joints_acc[6:9], RR=nmpc_joints_acc[9:12]
                 )
-            elif self.type == "arm_mpc":
+            elif self.type in ("arm_mpc", "pacc-comp"):
 
                 # state_current['arm_joint_pos']=np.zeros(3) #rosnodearduino
                 # state_current['arm_joint_vel']=np.zeros(3) #rosnodearduino
